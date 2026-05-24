@@ -63,7 +63,8 @@ out vec4 fragColor;
 vec3 UVDebugTexture(vec2 uv)
 {
     vec2 tiled = fract(uv);
-    ivec2 cell = ivec2(floor(tiled * 6.0));
+    vec2 gridUV = vec2(tiled.x, 1.0 - tiled.y);
+    ivec2 cell = ivec2(clamp(floor(gridUV * 6.0), vec2(0.0), vec2(5.0)));
     int idx = (cell.x + cell.y) % 6;
 
     vec3 palette[6] = vec3[](
