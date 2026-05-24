@@ -2,7 +2,7 @@
 //
 // Controls
 //   Camera movement : W/S (elevation) | A/D (azimuth) | Q/E (zoom)
-//   Toggles         : N (normals) | T (texture) | F (face/averaged normals)
+//   Toggles         : N (normals) | F (face/averaged normals)
 //                     M (wireframe) | +/Z (more slices) | -/X (fewer slices)
 //   Quit            : Escape
 
@@ -38,48 +38,27 @@ static const GLsizei WIN_H = 720;
 static const char* k_vertSrc = R"glsl(
 #version 430 core
 layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aUV;
 
 uniform mat4 uMVP;
-uniform mat3 uNormalMat;
-
-out vec3 vNormal;
-out vec2 vUV;
+out vec3 vColor;
 
 void main()
 {
     gl_Position = uMVP * vec4(aPos, 1.0);
-    vNormal     = normalize(uNormalMat * aNormal);
-    vUV         = aUV;
+    vColor      = vec3(clamp(aUV.x, 0.0, 1.0), clamp(aUV.y, 0.0, 1.0), 0.0);
 }
 )glsl";
 
 static const char* k_fragSrc = R"glsl(
 #version 430 core
-in vec3 vNormal;
-in vec2 vUV;
-
-uniform sampler2D uTexture;
-uniform bool      uUseTexture;
+in vec3 vColor;
 
 out vec4 fragColor;
 
 void main()
 {
-    vec3  lightDir = normalize(vec3(1.0, 1.0, 1.0));
-    float diffuse  = max(dot(normalize(vNormal), lightDir), 0.0);
-    float ambient  = 0.2;
-
-    if (uUseTexture)
-    {
-        vec4 texColor = texture(uTexture, vUV);
-        fragColor = vec4(texColor.rgb * (ambient + diffuse), texColor.a);
-    }
-    else
-    {
-        fragColor = vec4(vec3(ambient + diffuse), 1.0);
-    }
+    fragColor = vec4(vColor, 1.0);
 }
 )glsl";
 
@@ -144,61 +123,6 @@ static GLuint LinkProgram(const char* vSrc, const char* fSrc)
     glDetachShader(prog, vs); glDeleteShader(vs);
     glDetachShader(prog, fs); glDeleteShader(fs);
     return prog;
-}
-
-// ============================================================
-//  Procedural texture
-//    6 colour bands with smooth gradients:
-//    Blue -> Cyan -> Green -> Yellow -> Red -> Purple
-// ============================================================
-static GLuint CreateProceduralTexture()
-{
-    const int W = 256, H = 256;
-    std::vector<unsigned char> pixels(W * H * 3);
-
-    const float colours[7][3] = {
-        {0.0f, 0.0f, 1.0f},  // Blue
-        {0.0f, 1.0f, 1.0f},  // Cyan
-        {0.0f, 1.0f, 0.0f},  // Green
-        {1.0f, 1.0f, 0.0f},  // Yellow
-        {1.0f, 0.0f, 0.0f},  // Red
-        {1.0f, 0.0f, 1.0f},  // Purple
-        {0.0f, 0.0f, 1.0f},  // Blue (wrap-around)
-    };
-    const int numBands = 6;
-
-    for (int y = 0; y < H; ++y)
-    {
-        for (int x = 0; x < W; ++x)
-        {
-            float u     = float(x) / float(W);
-            float t     = u * float(numBands);
-            int   band  = static_cast<int>(t) % numBands;
-            float frac  = t - std::floor(t);
-            float s     = frac * frac * (3.0f - 2.0f * frac); // smoothstep
-
-            float r = colours[band][0] * (1.0f - s) + colours[band + 1][0] * s;
-            float g = colours[band][1] * (1.0f - s) + colours[band + 1][1] * s;
-            float b = colours[band][2] * (1.0f - s) + colours[band + 1][2] * s;
-
-            int idx          = (y * W + x) * 3;
-            pixels[idx + 0]  = static_cast<unsigned char>(r * 255.0f);
-            pixels[idx + 1]  = static_cast<unsigned char>(g * 255.0f);
-            pixels[idx + 2]  = static_cast<unsigned char>(b * 255.0f);
-        }
-    }
-
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, W, H, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    return tex;
 }
 
 // ============================================================
@@ -348,17 +272,10 @@ int main(int argc, char* argv[])
     GLuint normProg = LinkProgram(k_normVertSrc, k_normFragSrc);
 
     GLint uMVP        = glGetUniformLocation(mainProg, "uMVP");
-    GLint uNormalMat  = glGetUniformLocation(mainProg, "uNormalMat");
-    GLint uTexture    = glGetUniformLocation(mainProg, "uTexture");
-    GLint uUseTexture = glGetUniformLocation(mainProg, "uUseTexture");
     GLint uNormMVP    = glGetUniformLocation(normProg,  "uMVP");
-
-    // ---- Procedural texture ----
-    GLuint procTexture = CreateProceduralTexture();
 
     // ---- App-state toggles ----
     bool showNormals  = false;
-    bool useTexture   = true;
     bool faceNormals  = true;
     bool wireframe    = false;
     int  currentSlices = 4;
@@ -437,11 +354,6 @@ int main(int argc, char* argv[])
                     std::cout << "Normals: " << (showNormals ? "ON" : "OFF") << '\n';
                     break;
 
-                case SDL_SCANCODE_T:
-                    useTexture = !useTexture;
-                    std::cout << "Texture: " << (useTexture ? "ON" : "OFF") << '\n';
-                    break;
-
                 case SDL_SCANCODE_F:
                     faceNormals = !faceNormals;
                     for (auto& o : objects) o.mesh.SetNormalMode(faceNormals);
@@ -483,17 +395,13 @@ int main(int argc, char* argv[])
         glm::mat4 VP = P * V;
 
         // -- Clear --
-        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 
         // -- Draw objects --
         glUseProgram(mainProg);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, procTexture);
-        glUniform1i(uTexture, 0);
-        glUniform1i(uUseTexture, useTexture ? GL_TRUE : GL_FALSE);
 
         for (const auto& obj : objects)
         {
@@ -501,10 +409,8 @@ int main(int argc, char* argv[])
 
             glm::mat4 M   = obj.ModelMatrix();
             glm::mat4 MVP = VP * M;
-            glm::mat3 NM  = glm::mat3(glm::transpose(glm::inverse(M)));
 
             glUniformMatrix4fv(uMVP,       1, GL_FALSE, glm::value_ptr(MVP));
-            glUniformMatrix3fv(uNormalMat, 1, GL_FALSE, glm::value_ptr(NM));
 
             obj.mesh.Draw();
         }
@@ -531,7 +437,6 @@ int main(int argc, char* argv[])
 
     // -- Cleanup --
     for (auto& o : objects) o.mesh.Free();
-    glDeleteTextures(1, &procTexture);
     glDeleteProgram(mainProg);
     glDeleteProgram(normProg);
 
