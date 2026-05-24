@@ -1,290 +1,542 @@
+// CS300 Assignment 0 – full 3-D graphics pipeline
+//
+// Controls
+//   Camera movement : W/S (elevation) | A/D (azimuth) | Q/E (zoom)
+//   Toggles         : N (normals) | T (texture) | F (face/averaged normals)
+//                     M (wireframe) | +/Z (more slices) | -/X (fewer slices)
+//   Quit            : Escape
+
 #include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #include <GL/glew.h>
-#include <GL/GL.h>
+#include <GL/gl.h>
 #include <SDL3/SDL.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "OGLDebug.h"
+#include "Camera.h"
+#include "CS300Parser.h"
+#include "Mesh.h"
 
-static int     winID;
-static GLsizei WIDTH = 1280;
-static GLsizei HEIGHT = 720;
+// ============================================================
+//  Window size
+// ============================================================
+static const GLsizei WIN_W = 1280;
+static const GLsizei WIN_H = 720;
 
-GLuint CreateShader(GLenum eShaderType, const std::string& strShaderFile)
+// ============================================================
+//  Shader sources
+// ============================================================
+static const char* k_vertSrc = R"glsl(
+#version 430 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUV;
+
+uniform mat4 uMVP;
+uniform mat3 uNormalMat;
+
+out vec3 vNormal;
+out vec2 vUV;
+
+void main()
 {
-	GLuint       shader = glCreateShader(eShaderType);
-	const char* strFileData = strShaderFile.c_str();
-	glShaderSource(shader, 1, &strFileData, NULL);
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    vNormal     = normalize(uNormalMat * aNormal);
+    vUV         = aUV;
+}
+)glsl";
 
-	glCompileShader(shader);
+static const char* k_fragSrc = R"glsl(
+#version 430 core
+in vec3 vNormal;
+in vec2 vUV;
 
-	GLint status;
-	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-	if (status == GL_FALSE)
-	{
-		GLint infoLogLength;
-		glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLogLength);
+uniform sampler2D uTexture;
+uniform bool      uUseTexture;
 
-		GLchar* strInfoLog = new GLchar[infoLogLength + 1];
-		glGetShaderInfoLog(shader, infoLogLength, NULL, strInfoLog);
+out vec4 fragColor;
 
-		const char* strShaderType = NULL;
-		switch (eShaderType)
-		{
-		case GL_VERTEX_SHADER:
-			strShaderType = "vertex";
-			break;
-		case GL_GEOMETRY_SHADER:
-			strShaderType = "geometry";
-			break;
-		case GL_FRAGMENT_SHADER:
-			strShaderType = "fragment";
-			break;
-		}
+void main()
+{
+    vec3  lightDir = normalize(vec3(1.0, 1.0, 1.0));
+    float diffuse  = max(dot(normalize(vNormal), lightDir), 0.0);
+    float ambient  = 0.2;
 
-		fprintf(stderr, "Compile failure in %s shader:\n%s\n", strShaderType, strInfoLog);
-		delete[] strInfoLog;
-	}
+    if (uUseTexture)
+    {
+        vec4 texColor = texture(uTexture, vUV);
+        fragColor = vec4(texColor.rgb * (ambient + diffuse), texColor.a);
+    }
+    else
+    {
+        fragColor = vec4(vec3(ambient + diffuse), 1.0);
+    }
+}
+)glsl";
 
-	return shader;
+// Normal line shader
+static const char* k_normVertSrc = R"glsl(
+#version 430 core
+layout(location = 0) in vec3 aPos;
+uniform mat4 uMVP;
+void main()
+{
+    gl_Position = uMVP * vec4(aPos, 1.0);
+}
+)glsl";
+
+static const char* k_normFragSrc = R"glsl(
+#version 430 core
+out vec4 fragColor;
+void main()
+{
+    fragColor = vec4(1.0, 1.0, 0.0, 1.0);
+}
+)glsl";
+
+// ============================================================
+//  Shader helper
+// ============================================================
+static GLuint CompileShader(GLenum type, const char* src)
+{
+    GLuint s = glCreateShader(type);
+    glShaderSource(s, 1, &src, nullptr);
+    glCompileShader(s);
+
+    GLint ok;
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok)
+    {
+        char log[1024];
+        glGetShaderInfoLog(s, sizeof(log), nullptr, log);
+        std::cerr << "Shader compile error:\n" << log << '\n';
+    }
+    return s;
 }
 
-GLuint CreateProgram(const std::vector<GLuint>& shaderList)
+static GLuint LinkProgram(const char* vSrc, const char* fSrc)
 {
-	GLuint program = glCreateProgram();
+    GLuint vs   = CompileShader(GL_VERTEX_SHADER,   vSrc);
+    GLuint fs   = CompileShader(GL_FRAGMENT_SHADER, fSrc);
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    glLinkProgram(prog);
 
-	for (size_t iLoop = 0; iLoop < shaderList.size(); iLoop++)
-		glAttachShader(program, shaderList[iLoop]);
+    GLint ok;
+    glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+    if (!ok)
+    {
+        char log[1024];
+        glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
+        std::cerr << "Program link error:\n" << log << '\n';
+    }
 
-	glLinkProgram(program);
-
-	GLint status;
-	glGetProgramiv(program, GL_LINK_STATUS, &status);
-	if (status == GL_FALSE)
-	{
-		GLint infoLogLength;
-		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLength);
-
-		GLchar* strInfoLog = new GLchar[infoLogLength + 1];
-		glGetProgramInfoLog(program, infoLogLength, NULL, strInfoLog);
-		fprintf(stderr, "Linker failure: %s\n", strInfoLog);
-		delete[] strInfoLog;
-	}
-
-	for (size_t iLoop = 0; iLoop < shaderList.size(); iLoop++)
-		glDetachShader(program, shaderList[iLoop]);
-
-	return program;
+    glDetachShader(prog, vs); glDeleteShader(vs);
+    glDetachShader(prog, fs); glDeleteShader(fs);
+    return prog;
 }
 
-const std::string strVertexShader = R"(
-	#version 430
-	layout(location = 0) in vec4 aPosition;
-	layout(location = 1) in vec3 aColor;
-	out vec3 color;
-	void main()
-	{
-	   gl_Position = aPosition;
-	   color = aColor;
-	})";
-
-const std::string strFragmentShader = R"(
-	#version 430
-	in vec3 color;
-	out vec4 outputColor;
-	void main()
-	{
-	   outputColor = vec4(color, 1.0f);
-	})";
-
-struct Vertex
+// ============================================================
+//  Procedural texture
+//    6 colour bands with smooth gradients:
+//    Blue -> Cyan -> Green -> Yellow -> Red -> Purple
+// ============================================================
+static GLuint CreateProceduralTexture()
 {
-	float pos[4];
-	float color[3];
+    const int W = 256, H = 256;
+    std::vector<unsigned char> pixels(W * H * 3);
+
+    const float colours[7][3] = {
+        {0.0f, 0.0f, 1.0f},  // Blue
+        {0.0f, 1.0f, 1.0f},  // Cyan
+        {0.0f, 1.0f, 0.0f},  // Green
+        {1.0f, 1.0f, 0.0f},  // Yellow
+        {1.0f, 0.0f, 0.0f},  // Red
+        {1.0f, 0.0f, 1.0f},  // Purple
+        {0.0f, 0.0f, 1.0f},  // Blue (wrap-around)
+    };
+    const int numBands = 6;
+
+    for (int y = 0; y < H; ++y)
+    {
+        for (int x = 0; x < W; ++x)
+        {
+            float u     = float(x) / float(W);
+            float t     = u * float(numBands);
+            int   band  = static_cast<int>(t) % numBands;
+            float frac  = t - std::floor(t);
+            float s     = frac * frac * (3.0f - 2.0f * frac); // smoothstep
+
+            float r = colours[band][0] * (1.0f - s) + colours[band + 1][0] * s;
+            float g = colours[band][1] * (1.0f - s) + colours[band + 1][1] * s;
+            float b = colours[band][2] * (1.0f - s) + colours[band + 1][2] * s;
+
+            int idx          = (y * W + x) * 3;
+            pixels[idx + 0]  = static_cast<unsigned char>(r * 255.0f);
+            pixels[idx + 1]  = static_cast<unsigned char>(g * 255.0f);
+            pixels[idx + 2]  = static_cast<unsigned char>(b * 255.0f);
+        }
+    }
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, W, H, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+// ============================================================
+//  Scene object
+// ============================================================
+enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
+
+struct SceneObject
+{
+    std::string  name;
+    MeshKind     kind    = MeshKind::PLANE;
+    std::string  objPath;
+    Mesh         mesh;
+
+    glm::vec3    pos{ 0.0f }, rot{ 0.0f }, sca{ 1.0f };
+
+    glm::mat4 ModelMatrix() const
+    {
+        // Rotation order: X then Y then Z
+        glm::mat4 T  = glm::translate(glm::mat4(1.0f), pos);
+        glm::mat4 Rx = glm::rotate(glm::mat4(1.0f), glm::radians(rot.x), glm::vec3(1,0,0));
+        glm::mat4 Ry = glm::rotate(glm::mat4(1.0f), glm::radians(rot.y), glm::vec3(0,1,0));
+        glm::mat4 Rz = glm::rotate(glm::mat4(1.0f), glm::radians(rot.z), glm::vec3(0,0,1));
+        glm::mat4 S  = glm::scale(glm::mat4(1.0f), sca);
+        return T * Rx * Ry * Rz * S;
+    }
 };
 
-const Vertex vertexData[3] = {
-	{{0.75f, 0.75f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
-	{{0.75f, -0.75f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.75f, -0.75f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}} };
-
-namespace
+// ============================================================
+//  Build a Mesh from kind + slices
+// ============================================================
+static Mesh BuildMesh(MeshKind kind, const std::string& objPath, int slices)
 {
-	GLuint theProgram;
-	GLuint vertexBufferObject;
-	GLuint vao;
+    int rings = slices / 2;
+    switch (kind)
+    {
+    case MeshKind::PLANE:    return Mesh::MakePlane();
+    case MeshKind::CUBE:     return Mesh::MakeCube();
+    case MeshKind::CONE:     return Mesh::MakeCone(slices);
+    case MeshKind::CYLINDER: return Mesh::MakeCylinder(slices);
+    case MeshKind::SPHERE:   return Mesh::MakeSphere(slices, rings);
+    case MeshKind::OBJ:      return Mesh::LoadOBJ(objPath);
+    }
+    return Mesh::MakePlane();
 }
 
-void InitializeProgram()
+// ============================================================
+//  Generate missing OBJ files so the scene can load them
+// ============================================================
+static void EnsureMeshFiles()
 {
-	std::vector<GLuint> shaderList;
+    namespace fs = std::filesystem;
+    fs::path dir("data/meshes");
+    if (!fs::exists(dir))
+        fs::create_directories(dir);
 
-	shaderList.push_back(CreateShader(GL_VERTEX_SHADER, strVertexShader));
-	shaderList.push_back(CreateShader(GL_FRAGMENT_SHADER, strFragmentShader));
+    auto saveIfMissing = [&](const char* name, Mesh m) {
+        fs::path p = dir / name;
+        if (!fs::exists(p))
+        {
+            std::cout << "Generating " << p.string() << " ...\n";
+            m.SaveOBJ(p.string());
+        }
+    };
 
-	theProgram = CreateProgram(shaderList);
-
-	std::for_each(shaderList.begin(), shaderList.end(), glDeleteShader);
+    saveIfMissing("plane.obj",            Mesh::MakePlane());
+    saveIfMissing("cube_face.obj",        Mesh::MakeCube());
+    saveIfMissing("cone_20_face.obj",     Mesh::MakeCone(20));
+    saveIfMissing("cylinder_20_face.obj", Mesh::MakeCylinder(20));
+    saveIfMissing("sphere_20_face.obj",   Mesh::MakeSphere(40, 20));
+    saveIfMissing("suzanne.obj",          Mesh::MakeSphere(32, 16));
 }
 
-
-void InitializeBuffers()
+// ============================================================
+//  main
+// ============================================================
+int main(int argc, char* argv[])
 {
-	// VAO
-	glGenVertexArrays(1, &vao);
+    const char* sceneFile = (argc > 1) ? argv[1] : "scene_A0.txt";
 
-	// VBO
-	glGenBuffers(1, &vertexBufferObject);
+    // ---- SDL init ----
+    if (!SDL_Init(SDL_INIT_VIDEO))
+    {
+        std::cerr << "SDL_Init: " << SDL_GetError() << '\n';
+        return 1;
+    }
 
-	glBindVertexArray(vao);
-	glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObject);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,   24);
 
-	// Insert the VBO into the VAO
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+    SDL_Window* window = SDL_CreateWindow("CS300", WIN_W, WIN_H, SDL_WINDOW_OPENGL);
+    if (!window)
+    {
+        std::cerr << "SDL_CreateWindow: " << SDL_GetError() << '\n';
+        SDL_Quit();
+        return 1;
+    }
 
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, color)));
+    SDL_GLContext glCtx = SDL_GL_CreateContext(window);
+    if (!glCtx)
+    {
+        std::cerr << "SDL_GL_CreateContext: " << SDL_GetError() << '\n';
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
-	// Unbind
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
-}
-
-//Called after the window and OpenGL are initialized. Called exactly once, before the main loop.
-void init()
-{
-	InitializeProgram();
-	InitializeBuffers();
-}
-
-//Called to update the display.
-//You should call SDL_GL_SwapWindow after all of your rendering to display what you rendered.
-void display(SDL_Window* window)
-{
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	// Bind the glsl program and this object's VAO
-	glUseProgram(theProgram);
-	glBindVertexArray(vao);
-
-	// Draw
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-
-	// Unbind
-	glBindVertexArray(0);
-	glUseProgram(0);
-
-	SDL_GL_SwapWindow(window);
-}
-
-void cleanup()
-{
-	// Delete the program
-	glDeleteProgram(theProgram);
-	// Delete the VBOs
-	glDeleteBuffers(1, &vertexBufferObject);
-	// Delete the VAO
-	glDeleteVertexArrays(1, &vao);
-}
-
-int main(int argc, char* args[])
-{
-	if (!SDL_Init(SDL_INIT_VIDEO))
-	{
-		std::cout << "Could not initialize SDL: " << SDL_GetError() << std::endl;
-		exit(1);
-	}
-
-	SDL_Window* window = SDL_CreateWindow("CS300", WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
-	if (window == nullptr)
-	{
-		std::cout << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
-		SDL_Quit();
-		exit(1);
-	}
-
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-	SDL_GLContext context_ = SDL_GL_CreateContext(window);
-	if (context_ == nullptr)
-	{
-		SDL_DestroyWindow(window);
-		std::cout << "SDL_GL_CreateContext Error: " << SDL_GetError() << std::endl;
-		SDL_Quit();
-		exit(1);
-	}
-
-	glewExperimental = true;
-	if (glewInit() != GLEW_OK)
-	{
-		SDL_GL_DestroyContext(context_);
-		SDL_DestroyWindow(window);
-		std::cout << "GLEW Error: Failed to init" << std::endl;
-		SDL_Quit();
-		exit(1);
-	}
+    glewExperimental = GL_TRUE;
+    if (glewInit() != GLEW_OK)
+    {
+        std::cerr << "glewInit failed\n";
+        SDL_GL_DestroyContext(glCtx);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
 #if _DEBUG
-	glEnable(GL_DEBUG_OUTPUT);
-	glDebugMessageCallback(MessageCallback, 0);
+    glEnable(GL_DEBUG_OUTPUT);
+    glDebugMessageCallback(MessageCallback, nullptr);
 #endif
 
-	// print GPU data
-	std::cout << "GL_VENDOR: " << glGetString(GL_VENDOR) << std::endl;
-	std::cout << "GL_RENDERER: " << glGetString(GL_RENDERER) << std::endl;
-	std::cout << "GL_VERSION: " << glGetString(GL_VERSION) << std::endl;
+    std::cout << "GL_VENDOR   : " << glGetString(GL_VENDOR)   << '\n';
+    std::cout << "GL_RENDERER : " << glGetString(GL_RENDERER) << '\n';
+    std::cout << "GL_VERSION  : " << glGetString(GL_VERSION)  << '\n';
 
-	GLint totalMemKb = 0;
-	glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &totalMemKb);
-	std::cout << "GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX: " << totalMemKb << std::endl;
-	glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &totalMemKb);
-	std::cout << "GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX: " << totalMemKb << std::endl;
+    // ---- Parse scene ----
+    CS300Parser scene;
+    scene.LoadDataFromFile(sceneFile);
 
-	std::cout << std::endl
-		<< "Extensions: "
-		<< std::endl;
-	int numExtensions;
-	glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
-	for (int i = 0; i < numExtensions; i++)
-	{
-		std::cout << glGetStringi(GL_EXTENSIONS, i) << std::endl;
-	}
+    // ---- Generate missing OBJ files ----
+    EnsureMeshFiles();
 
-	init();
+    // ---- Camera ----
+    Camera camera;
+    camera.fovY   = glm::radians(scene.fovy);
+    camera.aspect = float(WIN_W) / float(WIN_H);
+    camera.zNear  = scene.nearPlane;
+    camera.zFar   = scene.farPlane;
+    camera.InitFromLookAt(scene.camPos, scene.camTarget, scene.camUp);
 
-	SDL_Event event;
-	bool      quit = false;
-	while (!quit)
-	{
-		while (SDL_PollEvent(&event))
-		{
-			switch (event.type)
-			{
-			case SDL_EVENT_QUIT:
-				quit = true;
-				break;
-			case SDL_EVENT_KEY_DOWN:
-				if (event.key.type == SDL_SCANCODE_ESCAPE)
-					quit = true;
-				break;
-			}
-		}
+    // ---- Shaders ----
+    GLuint mainProg = LinkProgram(k_vertSrc,     k_fragSrc);
+    GLuint normProg = LinkProgram(k_normVertSrc, k_normFragSrc);
 
-		display(window);
-	}
+    GLint uMVP        = glGetUniformLocation(mainProg, "uMVP");
+    GLint uNormalMat  = glGetUniformLocation(mainProg, "uNormalMat");
+    GLint uTexture    = glGetUniformLocation(mainProg, "uTexture");
+    GLint uUseTexture = glGetUniformLocation(mainProg, "uUseTexture");
+    GLint uNormMVP    = glGetUniformLocation(normProg,  "uMVP");
 
-	cleanup();
+    // ---- Procedural texture ----
+    GLuint procTexture = CreateProceduralTexture();
 
-	SDL_GL_DestroyContext(context_);
-	SDL_DestroyWindow(window);
-	SDL_Quit();
+    // ---- App-state toggles ----
+    bool showNormals  = false;
+    bool useTexture   = true;
+    bool faceNormals  = true;
+    bool wireframe    = false;
+    int  currentSlices = 4;
 
-	return 0;
+    // ---- Build scene objects ----
+    std::vector<SceneObject> objects;
+    objects.reserve(scene.objects.size());
+
+    for (const auto& so : scene.objects)
+    {
+        SceneObject obj;
+        obj.name = so.name;
+        obj.pos  = so.pos;
+        obj.rot  = so.rot;
+        obj.sca  = so.sca;
+
+        const std::string& ms = so.mesh;
+        if      (ms == "PLANE")    obj.kind = MeshKind::PLANE;
+        else if (ms == "CUBE")     obj.kind = MeshKind::CUBE;
+        else if (ms == "CONE")     obj.kind = MeshKind::CONE;
+        else if (ms == "CYLINDER") obj.kind = MeshKind::CYLINDER;
+        else if (ms == "SPHERE")   obj.kind = MeshKind::SPHERE;
+        else { obj.kind = MeshKind::OBJ; obj.objPath = ms; }
+
+        obj.mesh = BuildMesh(obj.kind, obj.objPath, currentSlices);
+        obj.mesh.Upload(faceNormals);
+        objects.push_back(std::move(obj));
+    }
+
+    // ---- OpenGL state ----
+    glEnable(GL_DEPTH_TEST);
+
+    // ---- Timing ----
+    Uint64 prevTick = SDL_GetTicks();
+
+    // ---- Main loop ----
+    SDL_Event ev;
+    bool quit = false;
+
+    while (!quit)
+    {
+        Uint64 nowTick = SDL_GetTicks();
+        float  dt      = float(nowTick - prevTick) * 0.001f;
+        prevTick       = nowTick;
+
+        // Helper: rebuild all parametric meshes with the current slice count
+        auto rebuildSlicedMeshes = [&]() {
+            for (auto& o : objects)
+            {
+                if (o.kind == MeshKind::CONE ||
+                    o.kind == MeshKind::CYLINDER ||
+                    o.kind == MeshKind::SPHERE)
+                {
+                    o.mesh.Free();
+                    o.mesh = BuildMesh(o.kind, o.objPath, currentSlices);
+                    o.mesh.Upload(faceNormals);
+                }
+            }
+            std::cout << "Slices: " << currentSlices << '\n';
+        };
+
+        // -- Events --
+        while (SDL_PollEvent(&ev))
+        {
+            if (ev.type == SDL_EVENT_QUIT)
+                quit = true;
+
+            if (ev.type == SDL_EVENT_KEY_DOWN)
+            {
+                switch (ev.key.scancode)
+                {
+                case SDL_SCANCODE_ESCAPE: quit = true; break;
+
+                case SDL_SCANCODE_N:
+                    showNormals = !showNormals;
+                    std::cout << "Normals: " << (showNormals ? "ON" : "OFF") << '\n';
+                    break;
+
+                case SDL_SCANCODE_T:
+                    useTexture = !useTexture;
+                    std::cout << "Texture: " << (useTexture ? "ON" : "OFF") << '\n';
+                    break;
+
+                case SDL_SCANCODE_F:
+                    faceNormals = !faceNormals;
+                    for (auto& o : objects) o.mesh.SetNormalMode(faceNormals);
+                    std::cout << "Normal mode: " << (faceNormals ? "FACE" : "AVERAGED") << '\n';
+                    break;
+
+                case SDL_SCANCODE_M:
+                    wireframe = !wireframe;
+                    std::cout << "Wireframe: " << (wireframe ? "ON" : "OFF") << '\n';
+                    break;
+
+                // Increase slices: + or Z
+                case SDL_SCANCODE_EQUALS:
+                case SDL_SCANCODE_KP_PLUS:
+                case SDL_SCANCODE_Z:
+                    currentSlices += 2;
+                    rebuildSlicedMeshes();
+                    break;
+
+                // Decrease slices: - or X
+                case SDL_SCANCODE_MINUS:
+                case SDL_SCANCODE_KP_MINUS:
+                case SDL_SCANCODE_X:
+                    currentSlices = std::max(4, currentSlices - 2);
+                    rebuildSlicedMeshes();
+                    break;
+
+                default: break;
+                }
+            }
+        }
+
+        // -- Camera continuous input --
+        camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);
+
+        // -- Matrices --
+        glm::mat4 V  = camera.GetView();
+        glm::mat4 P  = camera.GetProjection();
+        glm::mat4 VP = P * V;
+
+        // -- Clear --
+        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+
+        // -- Draw objects --
+        glUseProgram(mainProg);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, procTexture);
+        glUniform1i(uTexture, 0);
+        glUniform1i(uUseTexture, useTexture ? GL_TRUE : GL_FALSE);
+
+        for (const auto& obj : objects)
+        {
+            if (!obj.mesh.IsValid()) continue;
+
+            glm::mat4 M   = obj.ModelMatrix();
+            glm::mat4 MVP = VP * M;
+            glm::mat3 NM  = glm::mat3(glm::transpose(glm::inverse(M)));
+
+            glUniformMatrix4fv(uMVP,       1, GL_FALSE, glm::value_ptr(MVP));
+            glUniformMatrix3fv(uNormalMat, 1, GL_FALSE, glm::value_ptr(NM));
+
+            obj.mesh.Draw();
+        }
+
+        // -- Draw normal lines --
+        if (showNormals)
+        {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            glUseProgram(normProg);
+
+            for (const auto& obj : objects)
+            {
+                if (!obj.mesh.HasNormals()) continue;
+
+                glm::mat4 MVP = VP * obj.ModelMatrix();
+                glUniformMatrix4fv(uNormMVP, 1, GL_FALSE, glm::value_ptr(MVP));
+                obj.mesh.DrawNormals();
+            }
+        }
+
+        glUseProgram(0);
+        SDL_GL_SwapWindow(window);
+    }
+
+    // -- Cleanup --
+    for (auto& o : objects) o.mesh.Free();
+    glDeleteTextures(1, &procTexture);
+    glDeleteProgram(mainProg);
+    glDeleteProgram(normProg);
+
+    SDL_GL_DestroyContext(glCtx);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0;
 }
