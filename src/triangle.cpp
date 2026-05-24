@@ -2,7 +2,7 @@
 //
 // Controls
 //   Camera movement : W/S (elevation) | A/D (azimuth) | Q/E (zoom)
-//   Toggles         : N (normals) | F (face/averaged normals)
+//   Toggles         : N (normals) | F (face/averaged normals) | T (texture mode)
 //                     M (wireframe) | +/Z (more slices) | -/X (fewer slices)
 //   Quit            : Escape
 
@@ -41,24 +41,45 @@ layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec2 aUV;
 
 uniform mat4 uMVP;
+out vec2 vUV;
 out vec3 vColor;
 
 void main()
 {
     gl_Position = uMVP * vec4(aPos, 1.0);
+    vUV         = aUV;
     vColor      = vec3(clamp(aUV.x, 0.0, 1.0), clamp(aUV.y, 0.0, 1.0), 0.0);
 }
 )glsl";
 
 static const char* k_fragSrc = R"glsl(
 #version 430 core
+in vec2 vUV;
 in vec3 vColor;
+uniform bool uUseTexture;
 
 out vec4 fragColor;
 
+vec3 UVDebugTexture(vec2 uv)
+{
+    vec2 tiled = fract(uv);
+    ivec2 cell = ivec2(floor(tiled * 6.0));
+    int idx = (cell.x + cell.y) % 6;
+
+    vec3 palette[6] = vec3[](
+        vec3(0.0, 0.0, 1.0), // blue
+        vec3(0.0, 1.0, 1.0), // cyan
+        vec3(0.0, 1.0, 0.0), // green
+        vec3(1.0, 1.0, 0.0), // yellow
+        vec3(1.0, 0.0, 0.0), // red
+        vec3(1.0, 0.0, 1.0)  // magenta
+    );
+    return palette[idx];
+}
+
 void main()
 {
-    fragColor = vec4(vColor, 1.0);
+    fragColor = vec4(uUseTexture ? UVDebugTexture(vUV) : vColor, 1.0);
 }
 )glsl";
 
@@ -272,11 +293,13 @@ int main(int argc, char* argv[])
     GLuint normProg = LinkProgram(k_normVertSrc, k_normFragSrc);
 
     GLint uMVP        = glGetUniformLocation(mainProg, "uMVP");
+    GLint uUseTexture = glGetUniformLocation(mainProg, "uUseTexture");
     GLint uNormMVP    = glGetUniformLocation(normProg,  "uMVP");
 
     // ---- App-state toggles ----
     bool showNormals  = false;
     bool faceNormals  = true;
+    bool textureMode  = false;
     bool wireframe    = false;
     int  currentSlices = 4;
 
@@ -365,6 +388,11 @@ int main(int argc, char* argv[])
                     std::cout << "Wireframe: " << (wireframe ? "ON" : "OFF") << '\n';
                     break;
 
+                case SDL_SCANCODE_T:
+                    textureMode = !textureMode;
+                    std::cout << "Texture mode: " << (textureMode ? "ON" : "OFF") << '\n';
+                    break;
+
                 // Increase slices: + or Z
                 case SDL_SCANCODE_EQUALS:
                 case SDL_SCANCODE_KP_PLUS:
@@ -411,6 +439,7 @@ int main(int argc, char* argv[])
             glm::mat4 MVP = VP * M;
 
             glUniformMatrix4fv(uMVP,       1, GL_FALSE, glm::value_ptr(MVP));
+            glUniform1i(uUseTexture, textureMode ? 1 : 0);
 
             obj.mesh.Draw();
         }
