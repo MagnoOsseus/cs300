@@ -143,7 +143,7 @@
     <ClCompile Include="src\CS300Parser.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\OGLDebug.cpp" />
-    <ClCompile Include="src\triangle.cpp" />
+    <ClCompile Include="src\\main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\animations.h" />
@@ -151,6 +151,9 @@
     <ClInclude Include="src\CS300Parser.h" />
     <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\OGLDebug.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
