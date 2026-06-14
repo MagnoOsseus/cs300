@@ -131,8 +131,8 @@ void main()
         vec3 lightToFragment = normalize(vWorldPos - light.position);
         float spotFactor = ComputeSpotFactor(light, lightToFragment);
 
-        float lightScale = (light.type == LIGHT_TYPE_SPOT) ? spotFactor : 1.0;
-        vec3 contribution = attenuation * lightScale * (ambientTerm + diffuseTerm + specularTerm);
+        // ComputeSpotFactor returns 1.0 for non-spot lights, so this formula works for all types.
+        vec3 contribution = attenuation * (ambientTerm + spotFactor * diffuseTerm + specularTerm);
         finalColor += contribution;
     }
 
