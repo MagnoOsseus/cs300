@@ -23,6 +23,7 @@
 static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 static const int kMaxLights = 8;
+static const float kMinLightDirectionLength = 1e-6f;
 
 // Mesh type each scene object can use.
 enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
@@ -438,7 +439,7 @@ int main(int argc, char * argv[])
         {
             const auto & light = scene.lights[static_cast<size_t>(i)];
             glm::vec3 lightDir = light.direction;
-            if (glm::length(lightDir) < 1e-6f)
+            if (glm::length(lightDir) < kMinLightDirectionLength)
             {
                 lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
             }

@@ -4,6 +4,7 @@ const int LIGHT_NUM_MAX = 8;
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
+const float MIN_EPSILON = 1e-6;
 
 struct Light
 {
@@ -58,7 +59,7 @@ float ComputeSpotFactor(Light light, vec3 lightToFragment)
         return 1.0;
     }
 
-    float denom = max(cosInner - cosOuter, 1e-6);
+    float denom = max(cosInner - cosOuter, MIN_EPSILON);
     float t = (cosAlpha - cosOuter) / denom;
     return clamp(pow(clamp(t, 0.0, 1.0), light.falloff), 0.0, 1.0);
 }
@@ -74,7 +75,7 @@ float ComputeAttenuation(Light light, float distanceToLight)
     float c2 = light.attenuation.y;
     float c3 = light.attenuation.z;
     float denom = c1 + c2 * distanceToLight + c3 * distanceToLight * distanceToLight;
-    denom = max(denom, 1e-6);
+    denom = max(denom, MIN_EPSILON);
     return min(1.0 / denom, 1.0);
 }
 
