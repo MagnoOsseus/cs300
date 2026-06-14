@@ -421,16 +421,16 @@ Mesh Mesh::MakeCone(int slices)
             m.tris_.push_back(t);
         }
 
-        // Base cap: planar disk UVs — map (x,z) position into [0,1]x[0,1].
+        // Base cap: wedge/pie UVs — center at V=0, rim at V=1, U=angle.
         {
-            glm::vec2 uvCenter(0.5f, 0.5f);
-            glm::vec2 uvB0(0.5f + 0.5f * std::cos(a0), 0.5f + 0.5f * std::sin(a0));
-            glm::vec2 uvB1(0.5f + 0.5f * std::cos(aN), 0.5f + 0.5f * std::sin(aN));
+            float u0   = float(i)     / float(slices);
+            float u1   = float(i + 1) / float(slices);
+            float uMid = (u0 + u1) * 0.5f;
 
             RawTri t;
-            t.v[0] = {baseCenter, uvCenter};
-            t.v[1] = {b0,         uvB0};
-            t.v[2] = {b1,         uvB1};
+            t.v[0] = {baseCenter, glm::vec2(uMid, 0.0f)};
+            t.v[1] = {b0,         glm::vec2(u0,   1.0f)};
+            t.v[2] = {b1,         glm::vec2(u1,   1.0f)};
             m.tris_.push_back(t);
         }
     }
