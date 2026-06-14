@@ -4,6 +4,7 @@ const int LIGHT_NUM_MAX = 8;
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
+const int LIGHTING_MODE_GOURAUD = 0;
 const float MIN_EPSILON = 1e-6;
 
 struct Light
@@ -22,6 +23,7 @@ struct Light
 in vec3 vWorldPos;
 in vec3 vWorldNormal;
 in vec2 vUV;
+in vec3 vLitColor;
 
 uniform bool uUseTexture;
 uniform sampler2D uDiffuseTexture;
@@ -29,6 +31,7 @@ uniform vec3 uCameraPos;
 uniform float uShininess;
 uniform float uAmbientBoost;
 uniform int uLightNum;
+uniform int uLightingMode;
 uniform Light uLight[LIGHT_NUM_MAX];
 
 out vec4 fragColor;
@@ -47,7 +50,6 @@ float ComputeSpotFactor(Light light, vec3 lightToFragment)
 
     vec3 dir = normalize(light.direction);
     float cosAlpha = dot(normalize(lightToFragment), dir);
-
     float cosInner = cos(radians(light.innerAngle));
     float cosOuter = cos(radians(light.outerAngle));
 
@@ -80,23 +82,20 @@ float ComputeAttenuation(Light light, float distanceToLight)
     return min(1.0 / denom, 1.0);
 }
 
-void main()
+vec3 ComputeLighting(vec3 worldPos, vec3 worldNormal, vec3 baseColor)
 {
-    vec3 baseColor = uUseTexture ? texture(uDiffuseTexture, vUV).rgb : UVColor(vUV);
     if (uLightNum <= 0)
     {
-        fragColor = vec4(baseColor, 1.0);
-        return;
+        return baseColor;
     }
 
-    vec3 N = normalize(vWorldNormal);
-    vec3 V = normalize(uCameraPos - vWorldPos);
+    vec3 N = normalize(worldNormal);
+    vec3 V = normalize(uCameraPos - worldPos);
     vec3 finalColor = vec3(0.0);
 
     for (int i = 0; i < uLightNum; ++i)
     {
         Light light = uLight[i];
-
         vec3 L = vec3(0.0);
         float distanceToLight = 0.0;
 
@@ -106,7 +105,7 @@ void main()
         }
         else
         {
-            vec3 toLight = light.position - vWorldPos;
+            vec3 toLight = light.position - worldPos;
             distanceToLight = length(toLight);
             if (distanceToLight > 0.0)
             {
@@ -128,13 +127,24 @@ void main()
         }
 
         float attenuation = ComputeAttenuation(light, distanceToLight);
-        vec3 lightToFragment = normalize(vWorldPos - light.position);
+        vec3 lightToFragment = normalize(worldPos - light.position);
         float spotFactor = ComputeSpotFactor(light, lightToFragment);
-
         float lightScale = (light.type == LIGHT_TYPE_SPOT) ? spotFactor : 1.0;
-        vec3 contribution = attenuation * lightScale * (ambientTerm + diffuseTerm + specularTerm);
-        finalColor += contribution;
+        finalColor += attenuation * lightScale * (ambientTerm + diffuseTerm + specularTerm);
     }
 
-    fragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
+    return clamp(finalColor, 0.0, 1.0);
+}
+
+void main()
+{
+    if (uLightingMode == LIGHTING_MODE_GOURAUD)
+    {
+        fragColor = vec4(clamp(vLitColor, 0.0, 1.0), 1.0);
+        return;
+    }
+
+    vec3 baseColor = uUseTexture ? texture(uDiffuseTexture, vUV).rgb : UVColor(vUV);
+    vec3 finalColor = ComputeLighting(vWorldPos, vWorldNormal, baseColor);
+    fragColor = vec4(finalColor, 1.0);
 }

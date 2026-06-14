@@ -23,6 +23,8 @@
 static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 static const int kMaxLights = 8;
+static const int kLightingModeGouraud = 0;
+static const int kLightingModePhong = 1;
 static const float kMinLightDirectionLength = 1e-6f;
 static const float kAmbientBoost = 0.25f;
 static const float kLightMarkerScale = 1.2f;
@@ -48,6 +50,7 @@ struct SceneObject
     glm::vec3    rot{ 0.0f };
     glm::vec3    sca{ 1.0f };
     Material     material;
+    bool         usePhongShading = true;
 
     // Builds the object model matrix.
     glm::mat4 ModelMatrix() const
@@ -391,6 +394,7 @@ int main(int argc, char * argv[])
     GLint uShininess = glGetUniformLocation(mainProg, "uShininess");
     GLint uAmbientBoost = glGetUniformLocation(mainProg, "uAmbientBoost");
     GLint uLightNum = glGetUniformLocation(mainProg, "uLightNum");
+    GLint uLightingMode = glGetUniformLocation(mainProg, "uLightingMode");
 
     std::array<LightUniformLoc, kMaxLights> lightUniforms{};
     for (int i = 0; i < kMaxLights; ++i)
@@ -445,6 +449,7 @@ int main(int argc, char * argv[])
         else if (ms == "SPHERE") obj.kind = MeshKind::SPHERE;
         else { obj.kind = MeshKind::OBJ; obj.objPath = ms; }
 
+        obj.usePhongShading = (obj.kind != MeshKind::OBJ);
         obj.mesh = BuildMesh(obj.kind, obj.objPath, currentSlices);
         obj.mesh.Upload(faceNormals);
         objects.push_back(std::move(obj));
@@ -601,6 +606,7 @@ int main(int argc, char * argv[])
             glm::mat4 M = obj.ModelMatrix();
             glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(M));
             glUniform1i(uUseTexture, textureMode ? 1 : 0);
+            glUniform1i(uLightingMode, obj.usePhongShading ? kLightingModePhong : kLightingModeGouraud);
             glUniform1f(uShininess, obj.material.shininess);
             obj.mesh.Draw();
         }
@@ -635,6 +641,7 @@ int main(int argc, char * argv[])
             glBindTexture(GL_TEXTURE_2D, whiteTex);
             glUniform1i(uDiffuseTexture, 0);
             glUniform1i(uUseTexture, 1);
+            glUniform1i(uLightingMode, kLightingModePhong);
             glUniform1f(uShininess, 64.0f);
 
             // Use one bright white point light located at camera to keep markers visible.
