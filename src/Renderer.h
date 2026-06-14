@@ -76,4 +76,5 @@ private:
     static glm::mat4 BuildModelMatrix(const SceneObject& object);
     static glm::vec3 NormalizeOrDefault(const glm::vec3& value, const glm::vec3& fallback);
     static GLuint CreateDefaultTexture();
+    static GLuint LoadTexture(const std::string& path);
 };

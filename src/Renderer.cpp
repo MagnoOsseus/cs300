@@ -10,6 +10,9 @@
 namespace
 {
 constexpr int kMaxLights = 8;
+constexpr int kMinSlices = 4;
+constexpr int kMinRings = 2;
+constexpr float kLengthEpsilonSquared = 1.0e-6f;
 }
 
 Renderer::~Renderer()
@@ -45,7 +48,7 @@ bool Renderer::Initialize(const Scene& scene, const std::string& shaderDirectory
 
 void Renderer::RebuildSlicedMeshes(int slices)
 {
-    currentSlices = std::max(4, slices);
+    currentSlices = std::max(kMinSlices, slices);
 
     for (auto& renderMesh : renderMeshes)
     {
@@ -188,7 +191,11 @@ void Renderer::BuildRenderMeshes(const Scene& scene)
         renderMesh.kind = ResolveMeshKind(object.mesh, renderMesh.objPath);
         renderMesh.mesh = BuildMesh(renderMesh.kind, renderMesh.objPath, currentSlices);
         renderMesh.mesh.Upload(faceNormalsEnabled);
-        renderMesh.diffuseTexture = defaultTexture;
+        renderMesh.diffuseTexture = object.diffuseTexture.empty() ? defaultTexture : LoadTexture(object.diffuseTexture);
+        if (renderMesh.diffuseTexture == 0)
+        {
+            renderMesh.diffuseTexture = defaultTexture;
+        }
         renderMeshes.push_back(std::move(renderMesh));
     }
 }
@@ -263,7 +270,7 @@ MeshKind Renderer::ResolveMeshKind(const std::string& meshId, std::string& objPa
 
 Mesh Renderer::BuildMesh(MeshKind kind, const std::string& objPath, int slices)
 {
-    const int rings = std::max(2, slices / 2);
+    const int rings = std::max(kMinRings, slices / 2);
 
     switch (kind)
     {
@@ -297,7 +304,7 @@ glm::mat4 Renderer::BuildModelMatrix(const SceneObject& object)
 glm::vec3 Renderer::NormalizeOrDefault(const glm::vec3& value, const glm::vec3& fallback)
 {
     const float lengthSquared = glm::dot(value, value);
-    if (lengthSquared <= 1.0e-6f)
+    if (lengthSquared <= kLengthEpsilonSquared)
     {
         return fallback;
     }
@@ -328,5 +335,46 @@ GLuint Renderer::CreateDefaultTexture()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     glBindTexture(GL_TEXTURE_2D, 0);
+    return texture;
+}
+
+GLuint Renderer::LoadTexture(const std::string& path)
+{
+    SDL_Surface* surface = SDL_LoadBMP(path.c_str());
+    if (surface == nullptr)
+    {
+        std::cerr << "Failed to load texture '" << path << "': " << SDL_GetError() << '\n';
+        return 0;
+    }
+
+    SDL_Surface* convertedSurface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(surface);
+
+    if (convertedSurface == nullptr)
+    {
+        std::cerr << "Failed to convert texture '" << path << "': " << SDL_GetError() << '\n';
+        return 0;
+    }
+
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA8,
+                 convertedSurface->w,
+                 convertedSurface->h,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 convertedSurface->pixels);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    SDL_DestroySurface(convertedSurface);
     return texture;
 }
