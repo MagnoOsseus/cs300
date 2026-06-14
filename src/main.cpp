@@ -29,8 +29,8 @@ layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec2 aUV;
 
 uniform mat4 uMVP;
-out vec2 vUV;
-out vec3 vColor;
+noperspective out vec2 vUV;
+noperspective out vec3 vColor;
 
 void main()
 {
@@ -43,8 +43,8 @@ void main()
 // Main fragment shader.
 static const char* k_fragSrc = R"glsl(
 #version 430 core
-in vec2 vUV;
-in vec3 vColor;
+noperspective in vec2 vUV;
+noperspective in vec3 vColor;
 uniform bool uUseTexture;
 
 out vec4 fragColor;
@@ -496,7 +496,6 @@ int main(int argc, char* argv[])
     SDL_Quit();
     return 0;
 }
-
 
 
 

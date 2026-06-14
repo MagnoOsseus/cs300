@@ -93,7 +93,6 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
         }
     }
 }
-
 // Builds indexed vertices with averaged normals per position.
 // This produces smooth shading where geometry is shared.
 void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
@@ -451,10 +450,6 @@ Mesh Mesh::MakeCylinder(int slices)
 
     glm::vec3 topCenter(0.0f, top, 0.0f);
     glm::vec3 botCenter(0.0f, bot, 0.0f);
-    auto capUV = [r](const glm::vec3& p) -> glm::vec2 {
-        return glm::vec2(0.5f + (p.x / (2.0f * r)),
-                         0.5f + (p.z / (2.0f * r)));
-    };
 
     for (int i = 0; i < slices; ++i)
     {
@@ -486,21 +481,23 @@ Mesh Mesh::MakeCylinder(int slices)
             m.tris_.push_back(tb);
         }
 
-        // Top cap: planar UVs centered on the disk to avoid collapsed triangles.
+        // Top cap: cylindrical UVs — u=angle, v=1 (top edge of texture).
         {
+            float uMid = (u0 + u1) * 0.5f;
             RawTri t;
-            t.v[0] = {topCenter, capUV(topCenter)};
-            t.v[1] = {t1,        capUV(t1)};
-            t.v[2] = {t0,        capUV(t0)};
+            t.v[0] = {topCenter, glm::vec2(uMid, 1.0f)};
+            t.v[1] = {t1,        glm::vec2(u1,   1.0f)};
+            t.v[2] = {t0,        glm::vec2(u0,   1.0f)};
             m.tris_.push_back(t);
         }
 
-        // Bottom cap: use the same planar projection as the top cap.
+        // Bottom cap: cylindrical UVs — u=angle, v=0 (bottom edge of texture).
         {
+            float uMid = (u0 + u1) * 0.5f;
             RawTri t;
-            t.v[0] = {botCenter, capUV(botCenter)};
-            t.v[1] = {b0,        capUV(b0)};
-            t.v[2] = {b1,        capUV(b1)};
+            t.v[0] = {botCenter, glm::vec2(uMid, 0.0f)};
+            t.v[1] = {b0,        glm::vec2(u0,   0.0f)};
+            t.v[2] = {b1,        glm::vec2(u1,   0.0f)};
             m.tris_.push_back(t);
         }
     }
