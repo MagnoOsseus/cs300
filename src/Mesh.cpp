@@ -477,27 +477,23 @@ Mesh Mesh::MakeCylinder(int slices)
             m.tris_.push_back(tb);
         }
 
-        // Top cap: planar disk UVs — map (x,z) position into [0,1]x[0,1].
+        // Top cap: cylindrical UVs — u=angle, v=1 (top edge of texture).
         {
-            glm::vec2 uvCenter(0.5f, 0.5f);
-            glm::vec2 uvT0(0.5f + 0.5f * std::cos(a0), 0.5f + 0.5f * std::sin(a0));
-            glm::vec2 uvT1(0.5f + 0.5f * std::cos(aN), 0.5f + 0.5f * std::sin(aN));
+            float uMid = (u0 + u1) * 0.5f;
             RawTri t;
-            t.v[0] = {topCenter, uvCenter};
-            t.v[1] = {t1,        uvT1};
-            t.v[2] = {t0,        uvT0};
+            t.v[0] = {topCenter, glm::vec2(uMid, 1.0f)};
+            t.v[1] = {t1,        glm::vec2(u1,   1.0f)};
+            t.v[2] = {t0,        glm::vec2(u0,   1.0f)};
             m.tris_.push_back(t);
         }
 
-        // Bottom cap: planar disk UVs — map (x,z) position into [0,1]x[0,1].
+        // Bottom cap: cylindrical UVs — u=angle, v=0 (bottom edge of texture).
         {
-            glm::vec2 uvCenter(0.5f, 0.5f);
-            glm::vec2 uvB0(0.5f + 0.5f * std::cos(a0), 0.5f + 0.5f * std::sin(a0));
-            glm::vec2 uvB1(0.5f + 0.5f * std::cos(aN), 0.5f + 0.5f * std::sin(aN));
+            float uMid = (u0 + u1) * 0.5f;
             RawTri t;
-            t.v[0] = {botCenter, uvCenter};
-            t.v[1] = {b0,        uvB0};
-            t.v[2] = {b1,        uvB1};
+            t.v[0] = {botCenter, glm::vec2(uMid, 0.0f)};
+            t.v[1] = {b0,        glm::vec2(u0,   0.0f)};
+            t.v[2] = {b1,        glm::vec2(u1,   0.0f)};
             m.tris_.push_back(t);
         }
     }
@@ -529,8 +525,9 @@ Mesh Mesh::MakeSphere(int slices, int rings)
             0.5f * std::sin(theta) * std::sin(phi));
     };
     auto getUV = [&](int ring, int slice) -> glm::vec2 {
+        // U goes around (0 at seam, 1 at seam), V=1 at north pole, V=0 at south pole.
         return glm::vec2(float(slice) / float(slices),
-                         float(ring)  / float(rings));
+                         1.0f - float(ring) / float(rings));
     };
 
     for (int i = 0; i < rings; ++i)
