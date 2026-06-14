@@ -165,7 +165,7 @@ struct SceneObject
 // Creates a mesh from type and parameters.
 static Mesh BuildMesh(MeshKind kind, const std::string& objPath, int slices)
 {
-    int rings = slices / 2;
+    int rings = slices;
     switch (kind)
     {
     case MeshKind::PLANE:    return Mesh::MakePlane();
@@ -298,7 +298,7 @@ int main(int argc, char* argv[])
     bool faceNormals  = true;
     bool textureMode  = false;
     bool wireframe    = false;
-    int  currentSlices = 4;
+    int  currentSlices = 20;
 
     // Builds scene objects from loaded data.
     std::vector<SceneObject> objects;
@@ -496,7 +496,6 @@ int main(int argc, char* argv[])
     SDL_Quit();
     return 0;
 }
-
 
 
 
