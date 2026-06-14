@@ -87,6 +87,6 @@ private:
     void UploadBuffers(const std::vector<Vertex>& verts, const std::vector<unsigned int>& idx);
 
     // Uploads line buffer to visualize normals.
-    void UploadNormalLines(const std::vector<Vertex>& verts, float length = 0.05f);
+    void UploadNormalLines(const std::vector<Vertex>& verts, float length = 0.1f);
 };
 
