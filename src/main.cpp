@@ -25,7 +25,6 @@ static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 static const int kMaxLights = 8;
 static const float kMinLightDirectionLength = 1e-6f;
-static const float kAmbientBoost = 0.25f;
 static const float kLightMarkerScale = 1.2f;
 
 // Mesh type each scene object can use.
@@ -309,7 +308,6 @@ int main(int argc, char * argv[])
     GLint uDiffuseTexture = glGetUniformLocation(mainProg, "uDiffuseTexture");
     GLint uCameraPos = glGetUniformLocation(mainProg, "uCameraPos");
     GLint uShininess = glGetUniformLocation(mainProg, "uShininess");
-    GLint uAmbientBoost = glGetUniformLocation(mainProg, "uAmbientBoost");
     GLint uLightNum = glGetUniformLocation(mainProg, "uLightNum");
 
     std::array<LightUniformLoc, kMaxLights> lightUniforms{};
@@ -515,7 +513,6 @@ int main(int argc, char * argv[])
 
         const int activeLightCount = std::min<int>(static_cast<int>(scene.lights.size()), kMaxLights);
         glUniform1i(uLightNum, activeLightCount);
-        glUniform1f(uAmbientBoost, kAmbientBoost);
 
         for (int i = 0; i < activeLightCount; ++i)
         {
@@ -592,7 +589,6 @@ int main(int argc, char * argv[])
 
             // Use one bright white point light located at camera to keep markers visible.
             glUniform1i(uLightNum, 1);
-            glUniform1f(uAmbientBoost, 1.0f);
             glUniform1i(lightUniforms[0].type, 0);
             glUniform3fv(lightUniforms[0].position, 1, glm::value_ptr(camPos));
             glUniform3fv(lightUniforms[0].direction, 1, glm::value_ptr(glm::vec3(0.0f, -1.0f, 0.0f)));
@@ -614,7 +610,6 @@ int main(int argc, char * argv[])
 
             // Restore scene light settings for next frame start.
             glUniform1i(uLightNum, activeLightCount);
-            glUniform1f(uAmbientBoost, kAmbientBoost);
         }
 
         // Presents the rendered frame.
