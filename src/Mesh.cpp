@@ -354,13 +354,18 @@ Mesh Mesh::MakeCube()
     // Standard UV layout: (0,0)=bottom-left, (1,0)=bottom-right, (1,1)=top-right, (0,1)=top-left.
     glm::vec2 uvsStd[4] = {{0,0},{1,0},{1,1},{0,1}};
 
-    // Top face (+Y) needs V flipped: vertices go front-to-back, but for XZ→UV consistency
-    // (U=x+0.5, V=z+0.5) the front edge (z=+0.5) must have V=1 and back (z=-0.5) V=0.
-    glm::vec2 uvsTop[4] = {{0,1},{1,1},{1,0},{0,0}};
+    // Top face (+Y) verts: v0(-x,+z) v1(+x,+z) v2(+x,-z) v3(-x,-z).
+    // U = 1 at -x, 0 at +x; V = 1 at -z (back), 0 at +z (front).
+    // → yellow(1,1) at back-left, black(0,0) at front-right.
+    glm::vec2 uvsTop[4] = {{1,0},{0,0},{0,1},{1,1}};
+
+    // Bottom face (-Y) verts: v0(-x,-z) v1(+x,-z) v2(+x,+z) v3(-x,+z).
+    // Same XZ formula → yellow(1,1) at back-left.
+    glm::vec2 uvsBtm[4] = {{1,1},{0,1},{0,0},{1,0}};
 
     for (int fi = 0; fi < 6; ++fi)
     {
-        const glm::vec2* uvs = (fi == 4) ? uvsTop : uvsStd;
+        const glm::vec2* uvs = (fi == 4) ? uvsTop : (fi == 5) ? uvsBtm : uvsStd;
         const auto& f = faces[fi];
 
         RawTri t1, t2;
