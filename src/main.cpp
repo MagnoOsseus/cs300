@@ -137,7 +137,18 @@ static GLuint CreateFallbackTexture()
 {
     const int texW = 128;
     const int texH = 128;
+    const int gridSize = 6;
     std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
+
+    // Paleta base para el patrón UV.
+    const glm::vec3 palette[gridSize] = {
+        glm::vec3(0.0f, 0.0f, 1.0f),
+        glm::vec3(0.0f, 1.0f, 1.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f),
+        glm::vec3(1.0f, 1.0f, 0.0f),
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(1.0f, 0.0f, 1.0f)
+    };
 
     for (int y = 0; y < texH; ++y)
     {
@@ -146,9 +157,16 @@ static GLuint CreateFallbackTexture()
             float u = static_cast<float>(x) / static_cast<float>(texW - 1);
             float v = static_cast<float>(y) / static_cast<float>(texH - 1);
             size_t idx = static_cast<size_t>((y * texW + x) * 3);
-            pixels[idx + 0] = static_cast<unsigned char>(u * 255.0f);
-            pixels[idx + 1] = static_cast<unsigned char>(v * 255.0f);
-            pixels[idx + 2] = 0;
+
+            float normalizedU = u;
+            float flippedV = 1.0f - v;
+            int cellX = std::clamp(static_cast<int>(std::floor(normalizedU * static_cast<float>(gridSize))), 0, gridSize - 1);
+            int cellY = std::clamp(static_cast<int>(std::floor(flippedV * static_cast<float>(gridSize))), 0, gridSize - 1);
+            const glm::vec3 color = palette[(cellX + cellY) % gridSize];
+
+            pixels[idx + 0] = static_cast<unsigned char>(color.r * 255.0f);
+            pixels[idx + 1] = static_cast<unsigned char>(color.g * 255.0f);
+            pixels[idx + 2] = static_cast<unsigned char>(color.b * 255.0f);
         }
     }
 
