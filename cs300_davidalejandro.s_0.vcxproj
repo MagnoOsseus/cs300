@@ -140,9 +140,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\animations.cpp" />
+    <ClCompile Include="src\animation_usage.cpp" />
     <ClCompile Include="src\CS300Parser.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\OGLDebug.cpp" />
+    <ClCompile Include="src\uniform_arrays_structs.cpp" />
     <ClCompile Include="src\\main.cpp" />
   </ItemGroup>
   <ItemGroup>

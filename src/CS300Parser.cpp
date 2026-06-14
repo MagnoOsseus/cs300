@@ -10,13 +10,6 @@ float CS300Parser::ReadFloat(std::ifstream & f)
     return static_cast<float>(std::atof(str.c_str()));
 }
 
-int CS300Parser::ReadInt(std::ifstream & f)
-{
-    std::string str;
-    f >> str;
-    return std::atoi(str.c_str());
-}
-
 glm::vec3 CS300Parser::ReadVec3(std::ifstream & f)
 {
     float x = ReadFloat(f);
@@ -147,15 +140,6 @@ void CS300Parser::LoadDataFromFile(const char * filename)
                 objects.back().mesh = mesh;
             }
         }
-        else if (id == "normalMap")
-        {
-            std::string normalMap;
-            inFile >> normalMap;
-            if (objects.size() > 0)
-            {
-                objects.back().normalMap = normalMap;
-            }
-        }
         else if (id == "shininess")
         {
             float ns = ReadFloat(inFile);
@@ -226,47 +210,6 @@ void CS300Parser::LoadDataFromFile(const char * filename)
                 lights.back().inner   = spotAtt.x;
                 lights.back().outer   = spotAtt.y;
                 lights.back().falloff = spotAtt.z;
-            }
-        }
-        else if (id == "bias")
-        {
-            float bias = ReadFloat(inFile);
-
-            if (lights.size() > 0)
-            {
-                lights.back().bias = bias;
-            }
-        }
-        else if (id == "pcf")
-        {
-            int pcf = ReadInt(inFile);
-
-            if (lights.size() > 0)
-            {
-                lights.back().pcf = pcf;
-            }
-        }
-        else if (id == "envMap")
-        {
-            for (size_t i = 0; i < environmentMap.size(); i++)
-            {
-                std::string cubemap;
-                inFile >> cubemap;
-                environmentMap[i] = cubemap;
-            }
-        }
-        else if (id == "reflector")
-        {
-            float ior = ReadFloat(inFile);
-            if (objects.size() > 0)
-            {
-                for (size_t i = 0; i < objects.size() - 1; i++)
-                {
-                    objects[i].reflector = false;
-                }
-
-                objects.back().reflector = true;
-                objects.back().ior       = ior;
             }
         }
         else if (Animations::NameToUpdater.find(id) != Animations::NameToUpdater.end())

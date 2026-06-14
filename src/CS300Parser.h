@@ -4,7 +4,6 @@
 
 #include <string>
 #include <vector>
-#include <array>
 
 #include "animations.h"
 
@@ -27,14 +26,11 @@ class CS300Parser
         std::string name;
 
         std::string mesh;
-        std::string normalMap = "data/textures/default_normal.png";
 
         glm::vec3 pos;
         glm::vec3 rot;
         glm::vec3 sca;
-        float     ns        = 10.0f;
-        float     ior       = 1.33f;
-        bool      reflector = false;
+        float     ns = 10.0f;
 
         std::vector<Animations::Anim> anims;
     };
@@ -51,8 +47,6 @@ class CS300Parser
         float     inner   = 0.0f;
         float     outer   = 30.0f;
         float     falloff = 1.0f;
-        float     bias    = 0.0f;
-        unsigned  pcf     = 0;
 
         std::string type = "POINT";
 
@@ -60,10 +54,7 @@ class CS300Parser
     };
     std::vector<Light> lights;
 
-    std::array<std::string, 6> environmentMap;
-
   private:
     static float     ReadFloat(std::ifstream & f);
-    static int       ReadInt(std::ifstream & f);
     static glm::vec3 ReadVec3(std::ifstream & f);
 };
