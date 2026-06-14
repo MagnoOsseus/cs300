@@ -1,292 +1,248 @@
 #include "CS300Parser.h"
 
-#include <iostream>
+#include <cstdlib>
 #include <fstream>
+#include <iostream>
+#include <string>
 
-float CS300Parser::ReadFloat(std::ifstream & f)
+namespace
 {
-    std::string str;
-    f >> str;
-    return static_cast<float>(std::atof(str.c_str()));
+enum class LastAdded
+{
+    NONE,
+    OBJECT,
+    LIGHT
+};
 }
 
-int CS300Parser::ReadInt(std::ifstream & f)
+float CS300Parser::ReadFloat(std::ifstream& file)
 {
-    std::string str;
-    f >> str;
-    return std::atoi(str.c_str());
+    std::string token;
+    file >> token;
+    return std::strtof(token.c_str(), nullptr);
 }
 
-glm::vec3 CS300Parser::ReadVec3(std::ifstream & f)
+int CS300Parser::ReadInt(std::ifstream& file)
 {
-    float x = ReadFloat(f);
-    float y = ReadFloat(f);
-    float z = ReadFloat(f);
-
-    return glm::vec3(x, y, z);
+    std::string token;
+    file >> token;
+    return std::atoi(token.c_str());
 }
 
-void CS300Parser::LoadDataFromFile(const char * filename)
+glm::vec3 CS300Parser::ReadVec3(std::ifstream& file)
 {
-    std::ifstream inFile(filename);
+    return glm::vec3(ReadFloat(file), ReadFloat(file), ReadFloat(file));
+}
 
-    if (!inFile.is_open())
+Scene CS300Parser::LoadDataFromFile(const char* filename) const
+{
+    std::ifstream input(filename);
+    if (!input.is_open())
     {
-        std::cout << "Could not open input file" << std::endl;
-        exit(0);
+        std::cerr << "Could not open input file: " << filename << '\n';
+        std::exit(1);
     }
 
-    objects.clear();
+    Scene scene;
+    LastAdded lastAdded = LastAdded::NONE;
+    std::string token;
 
-    std::string str;
-
-    enum class LastAdded
+    while (input >> token)
     {
-        NONE,
-        OBJECT,
-        LIGHT
-    };
-    LastAdded last = LastAdded::NONE;
-
-    while (!inFile.eof())
-    {
-        str = "";
-        inFile >> str;
-        auto comment = str.find_first_of("#");
-
-        if (comment == 0)
+        if (!token.empty() && token[0] == '#')
         {
-            std::getline(inFile, str);
+            std::getline(input, token);
             continue;
         }
 
-        std::string id = str;
-
-        if (id == "fovy")
+        if (token == "fovy")
         {
-            fovy = ReadFloat(inFile);
+            scene.fovy = ReadFloat(input);
         }
-        else if (id == "width")
+        else if (token == "width")
         {
-            width = ReadFloat(inFile);
+            scene.width = ReadFloat(input);
         }
-        else if (id == "height")
+        else if (token == "height")
         {
-            height = ReadFloat(inFile);
+            scene.height = ReadFloat(input);
         }
-        else if (id == "near")
+        else if (token == "near")
         {
-            nearPlane = ReadFloat(inFile);
+            scene.nearPlane = ReadFloat(input);
         }
-        else if (id == "far")
+        else if (token == "far")
         {
-            farPlane = ReadFloat(inFile);
+            scene.farPlane = ReadFloat(input);
         }
-        else if (id == "camPosition")
+        else if (token == "camPosition")
         {
-            camPos = ReadVec3(inFile);
+            scene.camPos = ReadVec3(input);
         }
-        else if (id == "camTarget")
+        else if (token == "camTarget")
         {
-            camTarget = ReadVec3(inFile);
+            scene.camTarget = ReadVec3(input);
         }
-        else if (id == "camUp")
+        else if (token == "camUp")
         {
-            camUp = ReadVec3(inFile);
+            scene.camUp = ReadVec3(input);
         }
-        else if (id == "object")
+        else if (token == "object")
         {
-            Transform newObj;
-            inFile >> newObj.name;
-            objects.push_back(newObj);
-            last = LastAdded::OBJECT;
+            SceneObject object;
+            input >> object.name;
+            scene.objects.push_back(object);
+            lastAdded = LastAdded::OBJECT;
         }
-        else if (id == "translate")
+        else if (token == "light")
         {
-            glm::vec3 pos = ReadVec3(inFile);
-
-            if (last == LastAdded::OBJECT)
+            scene.lights.emplace_back();
+            lastAdded = LastAdded::LIGHT;
+        }
+        else if (token == "translate" || token == "translation")
+        {
+            const glm::vec3 position = ReadVec3(input);
+            if (lastAdded == LastAdded::OBJECT && !scene.objects.empty())
             {
-                if (objects.size() > 0)
-                {
-                    objects.back().pos = pos;
-                }
+                scene.objects.back().originalPosition = position;
+                scene.objects.back().currentPosition = position;
             }
-            else if (last == LastAdded::LIGHT)
+            else if (lastAdded == LastAdded::LIGHT && !scene.lights.empty())
             {
-                if (lights.size() > 0)
-                {
-                    lights.back().pos = pos;
-                }
+                scene.lights.back().originalPosition = position;
+                scene.lights.back().currentPosition = position;
             }
         }
-        else if (id == "rotation")
+        else if (token == "rotation")
         {
-            glm::vec3 rot = ReadVec3(inFile);
-
-            if (objects.size() > 0)
+            if (!scene.objects.empty())
             {
-                objects.back().rot = rot;
+                scene.objects.back().rotation = ReadVec3(input);
             }
         }
-        else if (id == "scale")
+        else if (token == "scale")
         {
-            glm::vec3 sca = ReadVec3(inFile);
-
-            if (objects.size() > 0)
+            if (!scene.objects.empty())
             {
-                objects.back().sca = sca;
+                scene.objects.back().scale = ReadVec3(input);
             }
         }
-        else if (id == "mesh")
+        else if (token == "mesh")
         {
-            std::string mesh;
-            inFile >> mesh;
-            if (objects.size() > 0)
+            if (!scene.objects.empty())
             {
-                objects.back().mesh = mesh;
+                input >> scene.objects.back().mesh;
             }
         }
-        else if (id == "normalMap")
+        else if (token == "shininess")
         {
-            std::string normalMap;
-            inFile >> normalMap;
-            if (objects.size() > 0)
+            if (!scene.objects.empty())
             {
-                objects.back().normalMap = normalMap;
+                scene.objects.back().material.shininess = ReadFloat(input);
             }
         }
-        else if (id == "shininess")
+        else if (token == "texture" || token == "diffuseTexture")
         {
-            float ns = ReadFloat(inFile);
-
-            if (objects.size() > 0)
+            if (!scene.objects.empty())
             {
-                objects.back().ns = ns;
+                input >> scene.objects.back().diffuseTexture;
             }
         }
-        else if (id == "light")
+        else if (token == "color")
         {
-            Light newLight;
-
-            lights.push_back(newLight);
-            last = LastAdded::LIGHT;
-        }
-        else if (id == "color")
-        {
-            glm::vec3 col = ReadVec3(inFile);
-
-            if (lights.size() > 0)
+            if (!scene.lights.empty())
             {
-                lights.back().col = col;
+                scene.lights.back().color = ReadVec3(input);
             }
         }
-        else if (id == "ambient")
+        else if (token == "ambient")
         {
-            float ambient = ReadFloat(inFile);
-
-            if (lights.size() > 0)
+            if (!scene.lights.empty())
             {
-                lights.back().amb = ambient;
+                scene.lights.back().ambientCoefficient = ReadFloat(input);
             }
         }
-        else if (id == "lightType")
+        else if (token == "lightType")
         {
-            std::string type;
-            inFile >> type;
-            if (lights.size() > 0)
+            if (!scene.lights.empty())
             {
-                lights.back().type = type;
+                std::string typeText;
+                input >> typeText;
+                TryParseLightType(typeText, scene.lights.back().type);
             }
         }
-        else if (id == "attenuation")
+        else if (token == "attenuation")
         {
-            glm::vec3 att = ReadVec3(inFile);
-
-            if (lights.size() > 0)
+            if (!scene.lights.empty())
             {
-                lights.back().att = att;
+                const glm::vec3 attenuation = ReadVec3(input);
+                scene.lights.back().attenuation.constant = attenuation.x;
+                scene.lights.back().attenuation.linear = attenuation.y;
+                scene.lights.back().attenuation.quadratic = attenuation.z;
             }
         }
-        else if (id == "direction")
+        else if (token == "direction")
         {
-            glm::vec3 dir = ReadVec3(inFile);
-
-            if (lights.size() > 0)
+            if (!scene.lights.empty())
             {
-                lights.back().dir = dir;
+                scene.lights.back().direction = ReadVec3(input);
             }
         }
-        else if (id == "spotAttenuation")
+        else if (token == "spotAttenuation")
         {
-            glm::vec3 spotAtt = ReadVec3(inFile);
-
-            if (lights.size() > 0)
+            if (!scene.lights.empty())
             {
-                lights.back().inner   = spotAtt.x;
-                lights.back().outer   = spotAtt.y;
-                lights.back().falloff = spotAtt.z;
+                const glm::vec3 spotlight = ReadVec3(input);
+                scene.lights.back().spotlight.innerAngle = spotlight.x;
+                scene.lights.back().spotlight.outerAngle = spotlight.y;
+                scene.lights.back().spotlight.falloff = spotlight.z;
             }
         }
-        else if (id == "bias")
+        else if (token == "normalMap")
         {
-            float bias = ReadFloat(inFile);
-
-            if (lights.size() > 0)
+            std::string ignored;
+            input >> ignored;
+        }
+        else if (token == "reflector")
+        {
+            ReadFloat(input);
+        }
+        else if (token == "bias")
+        {
+            ReadFloat(input);
+        }
+        else if (token == "pcf")
+        {
+            ReadInt(input);
+        }
+        else if (token == "envMap")
+        {
+            for (int i = 0; i < 6; ++i)
             {
-                lights.back().bias = bias;
+                std::string ignored;
+                input >> ignored;
             }
         }
-        else if (id == "pcf")
+        else if (Animations::NameToUpdater.find(token) != Animations::NameToUpdater.end())
         {
-            int pcf = ReadInt(inFile);
-
-            if (lights.size() > 0)
+            const glm::vec3 parameter = ReadVec3(input);
+            if (lastAdded == LastAdded::OBJECT && !scene.objects.empty())
             {
-                lights.back().pcf = pcf;
+                scene.objects.back().animations.emplace_back(Animations::NameToUpdater.at(token), parameter);
+            }
+            else if (lastAdded == LastAdded::LIGHT && !scene.lights.empty())
+            {
+                scene.lights.back().animations.emplace_back(Animations::NameToUpdater.at(token), parameter);
             }
         }
-        else if (id == "envMap")
+        else
         {
-            for (size_t i = 0; i < environmentMap.size(); i++)
-            {
-                std::string cubemap;
-                inFile >> cubemap;
-                environmentMap[i] = cubemap;
-            }
-        }
-        else if (id == "reflector")
-        {
-            float ior = ReadFloat(inFile);
-            if (objects.size() > 0)
-            {
-                for (size_t i = 0; i < objects.size() - 1; i++)
-                {
-                    objects[i].reflector = false;
-                }
-
-                objects.back().reflector = true;
-                objects.back().ior       = ior;
-            }
-        }
-        else if (Animations::NameToUpdater.find(id) != Animations::NameToUpdater.end())
-        {
-            glm::vec3 param = ReadVec3(inFile);
-
-            if (last == LastAdded::OBJECT)
-            {
-                if (objects.size() > 0)
-                {
-                    objects.back().anims.push_back({ Animations::NameToUpdater.at(id), param });
-                }
-            }
-            else if (last == LastAdded::LIGHT)
-            {
-                if (lights.size() > 0)
-                {
-                    lights.back().anims.push_back({ Animations::NameToUpdater.at(id), param });
-                }
-            }
+            std::string ignoredLine;
+            std::getline(input, ignoredLine);
+            std::cerr << "Ignoring unsupported token '" << token << "' in " << filename << '\n';
         }
     }
+
+    scene.FinalizeParsedData();
+    return scene;
 }

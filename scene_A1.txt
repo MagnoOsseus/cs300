@@ -1,0 +1,70 @@
+# camera data
+fovy 60.0
+width 1280.0
+height 720.0
+near 0.1
+far 500.0
+camPosition 0 8 30
+camTarget 0 0 0
+camUp 0 1 0
+
+# scene data
+object floor
+translation 0 -4 0
+rotation -90 0 0
+scale 30 30 30
+mesh PLANE
+shininess 4
+
+object sphere
+translation -8 0 0
+rotation 0 0 0
+scale 4 4 4
+mesh SPHERE
+shininess 64
+sinusoidal 0 1.5 1.5
+
+object cube
+translation 0 0 0
+rotation 20 40 0
+scale 4 4 4
+mesh CUBE
+shininess 32
+
+object cone
+translation 8 -0.5 0
+rotation 0 0 0
+scale 4 4 4
+mesh CONE
+shininess 24
+
+object cylinder
+translation 0 0 -8
+rotation 0 0 0
+scale 3 5 3
+mesh CYLINDER
+shininess 18
+
+light
+translation 0 8 12
+color 1 1 1
+ambient 0.15
+lightType POINT
+attenuation 1 0.05 0.01
+orbit 0 4 0
+
+light
+direction -1 -1 -0.5
+color 0.35 0.35 0.45
+ambient 0.05
+lightType DIR
+
+light
+translation 10 10 0
+direction -1 -1 0
+color 1 0.9 0.8
+ambient 0.02
+lightType SPOT
+attenuation 1 0.03 0.005
+spotAttenuation 12 22 4
+sinusoidal 0 1.0 2.0
