@@ -18,6 +18,7 @@
 #include "CS300Parser.h"
 #include "Mesh.h"
 #include "ShaderManager.h"
+#include "animations.h"
 
 // Window size.
 static const GLsizei WIN_W = 1280;
@@ -44,15 +45,18 @@ struct SceneObject
     std::string  objPath;
     Mesh         mesh;
 
-    glm::vec3    pos{ 0.0f };
+    glm::vec3    pos{ 0.0f };     // original position from scene file (never modified)
+    glm::vec3    currPos{ 0.0f }; // animated position for this frame
     glm::vec3    rot{ 0.0f };
     glm::vec3    sca{ 1.0f };
     Material     material;
 
-    // Builds the object model matrix.
+    std::vector<Animations::Anim> anims; // animations attached to this object
+
+    // Builds the model matrix using the animated position.
     glm::mat4 ModelMatrix() const
     {
-        glm::mat4 T  = glm::translate(glm::mat4(1.0f), pos);
+        glm::mat4 T  = glm::translate(glm::mat4(1.0f), currPos);
         glm::mat4 Rx = glm::rotate(glm::mat4(1.0f), glm::radians(rot.x), glm::vec3(1, 0, 0));
         glm::mat4 Ry = glm::rotate(glm::mat4(1.0f), glm::radians(rot.y), glm::vec3(0, 1, 0));
         glm::mat4 Rz = glm::rotate(glm::mat4(1.0f), glm::radians(rot.z), glm::vec3(0, 0, 1));
@@ -447,6 +451,8 @@ int main(int argc, char * argv[])
 
         obj.mesh = BuildMesh(obj.kind, obj.objPath, currentSlices);
         obj.mesh.Upload(faceNormals);
+        obj.anims = so.anims;
+        obj.currPos = obj.pos; // initialize animated position to original
         objects.push_back(std::move(obj));
     }
 
@@ -455,6 +461,16 @@ int main(int argc, char * argv[])
 
     // Stores previous tick for frame delta time.
     Uint64 prevTick = SDL_GetTicks();
+
+    // Tracks total elapsed time in seconds for animations.
+    float elapsedTime = 0.0f;
+
+    // Animated light positions (updated every frame; original positions stay in scene.lights).
+    std::vector<glm::vec3> lightCurrPos(scene.lights.size());
+    for (size_t i = 0; i < scene.lights.size(); ++i)
+    {
+        lightCurrPos[i] = scene.lights[i].position;
+    }
 
     // Main render loop.
     SDL_Event ev;
@@ -466,6 +482,7 @@ int main(int argc, char * argv[])
         Uint64 nowTick = SDL_GetTicks();
         float dt = static_cast<float>(nowTick - prevTick) * 0.001f;
         prevTick = nowTick;
+        elapsedTime += dt;
 
         // Rebuilds meshes if the number of cuts changes.
         auto rebuildSlicedMeshes = [&]() {
@@ -544,6 +561,26 @@ int main(int argc, char * argv[])
         // Updates camera.
         camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);
 
+        // Updates object animations: always start from the original position.
+        for (auto & obj : objects)
+        {
+            obj.currPos = obj.pos;
+            for (const auto & anim : obj.anims)
+            {
+                obj.currPos = anim.Update(obj.currPos, elapsedTime);
+            }
+        }
+
+        // Updates light animations: always start from the original position.
+        for (size_t i = 0; i < scene.lights.size(); ++i)
+        {
+            lightCurrPos[i] = scene.lights[i].position;
+            for (const auto & anim : scene.lights[i].anims)
+            {
+                lightCurrPos[i] = anim.Update(lightCurrPos[i], elapsedTime);
+            }
+        }
+
         // View and projection matrices.
         glm::mat4 V = camera.GetView();
         glm::mat4 P = camera.GetProjection();
@@ -577,7 +614,7 @@ int main(int argc, char * argv[])
                 lightDir = glm::normalize(lightDir);
             }
             glUniform1i(lightUniforms[i].type, ToShaderLightType(light.type));
-            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(light.position));
+            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(lightCurrPos[static_cast<size_t>(i)]));
             glUniform3fv(lightUniforms[i].direction, 1, glm::value_ptr(lightDir));
             glUniform3fv(lightUniforms[i].color, 1, glm::value_ptr(light.color));
             glUniform1f(lightUniforms[i].ambient, light.ambient);
@@ -652,7 +689,7 @@ int main(int argc, char * argv[])
 
             for (int i = 0; i < activeLightCount; ++i)
             {
-                const glm::vec3 markerPos = scene.lights[static_cast<size_t>(i)].position;
+                const glm::vec3 markerPos = lightCurrPos[static_cast<size_t>(i)];
                 glm::mat4 markerModel = glm::translate(glm::mat4(1.0f), markerPos);
                 markerModel = glm::scale(markerModel, glm::vec3(kLightMarkerScale));
                 glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(markerModel));
