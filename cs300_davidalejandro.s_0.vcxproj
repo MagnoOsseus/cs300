@@ -143,6 +143,9 @@
     <ClCompile Include="src\CS300Parser.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\OGLDebug.cpp" />
+    <ClCompile Include="src\Renderer.cpp" />
+    <ClCompile Include="src\Scene.cpp" />
+    <ClCompile Include="src\ShaderManager.cpp" />
     <ClCompile Include="src\\main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -151,9 +154,17 @@
     <ClInclude Include="src\CS300Parser.h" />
     <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\OGLDebug.h" />
+    <ClInclude Include="src\Renderer.h" />
+    <ClInclude Include="src\Scene.h" />
+    <ClInclude Include="src\ShaderManager.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
+    <None Include="data\shaders\normals.frag" />
+    <None Include="data\shaders\normals.vert" />
+    <None Include="data\shaders\phong.frag" />
+    <None Include="data\shaders\phong.vert" />
+    <None Include="scene_A1.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
