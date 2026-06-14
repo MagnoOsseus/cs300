@@ -141,11 +141,11 @@ static GLuint CreateFallbackTexture()
     std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
 
     const glm::vec3 palette[gridSize] = {
-        glm::vec3(0.0f, 0.0f, 1.0f), // blue
-        glm::vec3(0.0f, 1.0f, 1.0f), // cyan
-        glm::vec3(0.0f, 1.0f, 0.0f), // green
-        glm::vec3(1.0f, 1.0f, 0.0f), // yellow
-        glm::vec3(1.0f, 0.0f, 0.0f), // red
+        glm::vec3(0.0f, 0.0f, 1.0f), // azul
+        glm::vec3(0.0f, 1.0f, 1.0f), // cian
+        glm::vec3(0.0f, 1.0f, 0.0f), // verde
+        glm::vec3(1.0f, 1.0f, 0.0f), // amarillo
+        glm::vec3(1.0f, 0.0f, 0.0f), // rojo
         glm::vec3(1.0f, 0.0f, 1.0f)  // magenta
     };
 
@@ -157,10 +157,10 @@ static GLuint CreateFallbackTexture()
             float v = static_cast<float>(y) / static_cast<float>(texH - 1);
             size_t idx = static_cast<size_t>((y * texW + x) * 3);
 
-            float tiledU = u;
-            float tiledV = 1.0f - v;
-            int cellX = std::clamp(static_cast<int>(std::floor(tiledU * static_cast<float>(gridSize))), 0, gridSize - 1);
-            int cellY = std::clamp(static_cast<int>(std::floor(tiledV * static_cast<float>(gridSize))), 0, gridSize - 1);
+            float normalizedU = u;
+            float flippedV = 1.0f - v;
+            int cellX = std::clamp(static_cast<int>(std::floor(normalizedU * static_cast<float>(gridSize))), 0, gridSize - 1);
+            int cellY = std::clamp(static_cast<int>(std::floor(flippedV * static_cast<float>(gridSize))), 0, gridSize - 1);
             const glm::vec3 color = palette[(cellX + cellY) % gridSize];
 
             pixels[idx + 0] = static_cast<unsigned char>(color.r * 255.0f);
