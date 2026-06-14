@@ -5,6 +5,7 @@ const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
 const int LIGHTING_MODE_GOURAUD = 0;
+const int LIGHTING_MODE_PHONG = 1;
 const float MIN_EPSILON = 1e-6;
 
 struct Light
