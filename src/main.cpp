@@ -87,7 +87,7 @@ int main(int argc, char* argv[])
     glEnable(GL_DEPTH_TEST);
 
     bool showNormals = false;
-    bool faceNormals = false;
+    bool faceNormalsEnabled = false;
     bool textureMappingEnabled = true;
     bool wireframe = false;
 
@@ -125,9 +125,9 @@ int main(int argc, char* argv[])
                     std::cout << "Texture mapping: " << (textureMappingEnabled ? "ON" : "OFF") << '\n';
                     break;
                 case SDL_SCANCODE_F:
-                    faceNormals = !faceNormals;
-                    renderer.SetFaceNormalMode(faceNormals);
-                    std::cout << "Normal mode: " << (faceNormals ? "FACE" : "AVERAGED") << '\n';
+                    faceNormalsEnabled = !faceNormalsEnabled;
+                    renderer.SetFaceNormalMode(faceNormalsEnabled);
+                    std::cout << "Normal mode: " << (faceNormalsEnabled ? "FACE" : "AVERAGED") << '\n';
                     break;
                 case SDL_SCANCODE_M:
                     wireframe = !wireframe;

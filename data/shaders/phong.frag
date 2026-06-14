@@ -118,7 +118,7 @@ void main()
 
         if (diffuseFactor > 0.0)
         {
-            vec3 reflectionVector = normalize(2.0 * dot(normal, lightVector) * normal - lightVector);
+            vec3 reflectionVector = reflect(-lightVector, normal);
             float specularFactor = pow(max(dot(reflectionVector, viewVector), 0.0), uShininess);
             specularTerm = light.color * vec3(1.0) * specularFactor;
         }
