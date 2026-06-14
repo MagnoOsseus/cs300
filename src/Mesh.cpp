@@ -351,11 +351,18 @@ Mesh Mesh::MakeCube()
         {{{-0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f, 0.5f}}},
     };
 
-    // UV coordinates reused for each face.
-    glm::vec2 uvs[4] = {{0,0},{1,0},{1,1},{0,1}};
+    // Standard UV layout: (0,0)=bottom-left, (1,0)=bottom-right, (1,1)=top-right, (0,1)=top-left.
+    glm::vec2 uvsStd[4] = {{0,0},{1,0},{1,1},{0,1}};
 
-    for (const auto& f : faces)
+    // Top face (+Y) needs V flipped: vertices go front-to-back, but for XZ→UV consistency
+    // (U=x+0.5, V=z+0.5) the front edge (z=+0.5) must have V=1 and back (z=-0.5) V=0.
+    glm::vec2 uvsTop[4] = {{0,1},{1,1},{1,0},{0,0}};
+
+    for (int fi = 0; fi < 6; ++fi)
     {
+        const glm::vec2* uvs = (fi == 4) ? uvsTop : uvsStd;
+        const auto& f = faces[fi];
+
         RawTri t1, t2;
         t1.v[0] = {f.verts[0], uvs[0]};
         t1.v[1] = {f.verts[1], uvs[1]};
