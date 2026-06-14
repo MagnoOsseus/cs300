@@ -3,6 +3,22 @@
 #include <iostream>
 #include <fstream>
 
+namespace
+{
+CS300Parser::LightType ParseLightType(const std::string & typeStr)
+{
+    if (typeStr == "DIR")
+    {
+        return CS300Parser::LightType::Directional;
+    }
+    if (typeStr == "SPOT")
+    {
+        return CS300Parser::LightType::Spot;
+    }
+    return CS300Parser::LightType::Point;
+}
+} // namespace
+
 float CS300Parser::ReadFloat(std::ifstream & f)
 {
     std::string str;
@@ -30,6 +46,7 @@ void CS300Parser::LoadDataFromFile(const char * filename)
     }
 
     objects.clear();
+    lights.clear();
 
     std::string str;
 
@@ -94,7 +111,7 @@ void CS300Parser::LoadDataFromFile(const char * filename)
             objects.push_back(newObj);
             last = LastAdded::OBJECT;
         }
-        else if (id == "translate")
+        else if (id == "translate" || id == "translation")
         {
             glm::vec3 pos = ReadVec3(inFile);
 
@@ -109,7 +126,7 @@ void CS300Parser::LoadDataFromFile(const char * filename)
             {
                 if (lights.size() > 0)
                 {
-                    lights.back().pos = pos;
+                    lights.back().position = pos;
                 }
             }
         }
@@ -151,64 +168,69 @@ void CS300Parser::LoadDataFromFile(const char * filename)
         }
         else if (id == "light")
         {
-            Light newLight;
-
-            lights.push_back(newLight);
-            last = LastAdded::LIGHT;
+            if (lights.size() < 8)
+            {
+                lights.push_back(Light{});
+                last = LastAdded::LIGHT;
+            }
+            else
+            {
+                last = LastAdded::NONE;
+            }
         }
         else if (id == "color")
         {
             glm::vec3 col = ReadVec3(inFile);
 
-            if (lights.size() > 0)
+            if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().col = col;
+                lights.back().color = col;
             }
         }
         else if (id == "ambient")
         {
             float ambient = ReadFloat(inFile);
 
-            if (lights.size() > 0)
+            if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().amb = ambient;
+                lights.back().ambient = ambient;
             }
         }
         else if (id == "lightType")
         {
             std::string type;
             inFile >> type;
-            if (lights.size() > 0)
+            if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().type = type;
+                lights.back().type = ParseLightType(type);
             }
         }
         else if (id == "attenuation")
         {
             glm::vec3 att = ReadVec3(inFile);
 
-            if (lights.size() > 0)
+            if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().att = att;
+                lights.back().attenuation = att;
             }
         }
         else if (id == "direction")
         {
             glm::vec3 dir = ReadVec3(inFile);
 
-            if (lights.size() > 0)
+            if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().dir = dir;
+                lights.back().direction = dir;
             }
         }
         else if (id == "spotAttenuation")
         {
             glm::vec3 spotAtt = ReadVec3(inFile);
 
-            if (lights.size() > 0)
+            if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().inner   = spotAtt.x;
-                lights.back().outer   = spotAtt.y;
+                lights.back().innerAngle = spotAtt.x;
+                lights.back().outerAngle = spotAtt.y;
                 lights.back().falloff = spotAtt.z;
             }
         }

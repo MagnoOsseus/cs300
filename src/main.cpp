@@ -1,6 +1,6 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -17,153 +17,63 @@
 #include "Camera.h"
 #include "CS300Parser.h"
 #include "Mesh.h"
+#include "ShaderManager.h"
 
 // Window size.
 static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
-
-// Main vertex shader.
-static const char* k_vertSrc = R"glsl(
-#version 430 core
-layout(location = 0) in vec3 aPos;
-layout(location = 2) in vec2 aUV;
-
-uniform mat4 uMVP;
-noperspective out vec2 vUV;
-noperspective out vec3 vColor;
-
-void main()
-{
-    gl_Position = uMVP * vec4(aPos, 1.0);
-    vUV         = aUV;
-    vColor      = vec3(clamp(aUV.x, 0.0, 1.0), clamp(aUV.y, 0.0, 1.0), 0.0);
-}
-)glsl";
-
-// Main fragment shader.
-static const char* k_fragSrc = R"glsl(
-#version 430 core
-noperspective in vec2 vUV;
-noperspective in vec3 vColor;
-uniform bool uUseTexture;
-
-out vec4 fragColor;
-
-// Generates a UV color pattern for debugging.
-vec3 UVDebugTexture(vec2 uv)
-{
-    vec2 tiled = fract(uv);
-    vec2 gridUV = vec2(tiled.x, 1.0 - tiled.y);
-    ivec2 cell = ivec2(clamp(floor(gridUV * 6.0), vec2(0.0), vec2(5.0)));
-    int idx = (cell.x + cell.y) % 6;
-
-    vec3 palette[6] = vec3[](
-        vec3(0.0, 0.0, 1.0), // blue
-        vec3(0.0, 1.0, 1.0), // cyan
-        vec3(0.0, 1.0, 0.0), // green
-        vec3(1.0, 1.0, 0.0), // yellow
-        vec3(1.0, 0.0, 0.0), // red
-        vec3(1.0, 0.0, 1.0)  // magenta
-    );
-    return palette[idx];
-}
-
-void main()
-{
-    fragColor = vec4(uUseTexture ? UVDebugTexture(vUV) : vColor, 1.0);
-}
-)glsl";
-
-// Vertex shader for drawing normals.
-static const char* k_normVertSrc = R"glsl(
-#version 430 core
-layout(location = 0) in vec3 aPos;
-uniform mat4 uMVP;
-void main()
-{
-    gl_Position = uMVP * vec4(aPos, 1.0);
-}
-)glsl";
-
-// Fragment shader for normals.
-static const char* k_normFragSrc = R"glsl(
-#version 430 core
-out vec4 fragColor;
-void main()
-{
-    fragColor = vec4(1.0, 1.0, 1.0, 1.0);
-}
-)glsl";
-
-// Compiles a shader and reports errors.
-static GLuint CompileShader(GLenum type, const char* src)
-{
-    GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, nullptr);
-    glCompileShader(s);
-
-    GLint ok;
-    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok)
-    {
-        char log[1024];
-        glGetShaderInfoLog(s, sizeof(log), nullptr, log);
-        std::cerr << "Shader compile error:\n" << log << '\n';
-    }
-    return s;
-}
-
-// Links a shader program and reports errors.
-static GLuint LinkProgram(const char* vSrc, const char* fSrc)
-{
-    GLuint vs   = CompileShader(GL_VERTEX_SHADER,   vSrc);
-    GLuint fs   = CompileShader(GL_FRAGMENT_SHADER, fSrc);
-    GLuint prog = glCreateProgram();
-    glAttachShader(prog, vs);
-    glAttachShader(prog, fs);
-    glLinkProgram(prog);
-
-    GLint ok;
-    glGetProgramiv(prog, GL_LINK_STATUS, &ok);
-    if (!ok)
-    {
-        char log[1024];
-        glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
-        std::cerr << "Program link error:\n" << log << '\n';
-    }
-
-    glDetachShader(prog, vs); glDeleteShader(vs);
-    glDetachShader(prog, fs); glDeleteShader(fs);
-    return prog;
-}
+static const int kMaxLights = 8;
 
 // Mesh type each scene object can use.
 enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
+
+// Material data for shading.
+struct Material
+{
+    float shininess = 10.0f;
+};
 
 // Scene object with transform and mesh.
 struct SceneObject
 {
     std::string  name;
-    MeshKind     kind    = MeshKind::PLANE;
+    MeshKind     kind = MeshKind::PLANE;
     std::string  objPath;
     Mesh         mesh;
 
-    glm::vec3    pos{ 0.0f }, rot{ 0.0f }, sca{ 1.0f };
+    glm::vec3    pos{ 0.0f };
+    glm::vec3    rot{ 0.0f };
+    glm::vec3    sca{ 1.0f };
+    Material     material;
 
     // Builds the object model matrix.
     glm::mat4 ModelMatrix() const
     {
         glm::mat4 T  = glm::translate(glm::mat4(1.0f), pos);
-        glm::mat4 Rx = glm::rotate(glm::mat4(1.0f), glm::radians(rot.x), glm::vec3(1,0,0));
-        glm::mat4 Ry = glm::rotate(glm::mat4(1.0f), glm::radians(rot.y), glm::vec3(0,1,0));
-        glm::mat4 Rz = glm::rotate(glm::mat4(1.0f), glm::radians(rot.z), glm::vec3(0,0,1));
+        glm::mat4 Rx = glm::rotate(glm::mat4(1.0f), glm::radians(rot.x), glm::vec3(1, 0, 0));
+        glm::mat4 Ry = glm::rotate(glm::mat4(1.0f), glm::radians(rot.y), glm::vec3(0, 1, 0));
+        glm::mat4 Rz = glm::rotate(glm::mat4(1.0f), glm::radians(rot.z), glm::vec3(0, 0, 1));
         glm::mat4 S  = glm::scale(glm::mat4(1.0f), sca);
         return T * Rx * Ry * Rz * S;
     }
 };
 
+// Uniform locations for one light in the shader.
+struct LightUniformLoc
+{
+    GLint type        = -1;
+    GLint position    = -1;
+    GLint direction   = -1;
+    GLint color       = -1;
+    GLint ambient     = -1;
+    GLint attenuation = -1;
+    GLint innerAngle  = -1;
+    GLint outerAngle  = -1;
+    GLint falloff     = -1;
+};
+
 // Creates a mesh from type and parameters.
-static Mesh BuildMesh(MeshKind kind, const std::string& objPath, int slices)
+static Mesh BuildMesh(MeshKind kind, const std::string & objPath, int slices)
 {
     int rings = slices / 2;
     switch (kind)
@@ -184,9 +94,11 @@ static void EnsureMeshFiles()
     namespace fs = std::filesystem;
     fs::path dir("data/meshes");
     if (!fs::exists(dir))
+    {
         fs::create_directories(dir);
+    }
 
-    auto saveIfMissing = [&](const char* name, Mesh m) {
+    auto saveIfMissing = [&](const char * name, Mesh m) {
         fs::path p = dir / name;
         if (!fs::exists(p))
         {
@@ -203,11 +115,64 @@ static void EnsureMeshFiles()
     saveIfMissing("suzanne.obj",          Mesh::MakeSphere(32, 16));
 }
 
-// Entry point: initializes, loads scene, renders, and cleans up.
-int main(int argc, char* argv[])
+// Converts parser light type to shader integer.
+static int ToShaderLightType(CS300Parser::LightType type)
 {
-    // Uses optional scene path from argv; defaults to scene_A0.txt.
-    const char* sceneFile = (argc > 1) ? argv[1] : "scene_A0.txt";
+    switch (type)
+    {
+    case CS300Parser::LightType::Directional: return 1;
+    case CS300Parser::LightType::Spot:        return 2;
+    case CS300Parser::LightType::Point:
+    default:                                  return 0;
+    }
+}
+
+// Creates a simple fallback texture.
+static GLuint CreateFallbackTexture()
+{
+    const int texW = 128;
+    const int texH = 128;
+    std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
+
+    for (int y = 0; y < texH; ++y)
+    {
+        for (int x = 0; x < texW; ++x)
+        {
+            float u = static_cast<float>(x) / static_cast<float>(texW - 1);
+            float v = static_cast<float>(y) / static_cast<float>(texH - 1);
+            size_t idx = static_cast<size_t>((y * texW + x) * 3);
+            pixels[idx + 0] = static_cast<unsigned char>(u * 255.0f);
+            pixels[idx + 1] = static_cast<unsigned char>(v * 255.0f);
+            pixels[idx + 2] = 0;
+        }
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGB8,
+                 texW,
+                 texH,
+                 0,
+                 GL_RGB,
+                 GL_UNSIGNED_BYTE,
+                 pixels.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+// Entry point: initializes, loads scene, renders, and cleans up.
+int main(int argc, char * argv[])
+{
+    // Uses optional scene path from argv; defaults to scene_A1.txt.
+    const char * sceneFile = (argc > 1) ? argv[1] : "scene_A1.txt";
 
     // SDL initialization.
     if (!SDL_Init(SDL_INIT_VIDEO))
@@ -217,15 +182,14 @@ int main(int argc, char* argv[])
     }
 
     // OpenGL context setup.
-    // Requests OpenGL 4.3 Core with depth and double buffer.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,   24);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
     // SDL window creation.
-    SDL_Window* window = SDL_CreateWindow("CS300", WIN_W, WIN_H, SDL_WINDOW_OPENGL);
+    SDL_Window * window = SDL_CreateWindow("CS300", WIN_W, WIN_H, SDL_WINDOW_OPENGL);
     if (!window)
     {
         std::cerr << "SDL_CreateWindow: " << SDL_GetError() << '\n';
@@ -244,7 +208,6 @@ int main(int argc, char* argv[])
     }
 
     // GLEW initialization.
-    // Enables modern extension entry points.
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK)
     {
@@ -262,9 +225,9 @@ int main(int argc, char* argv[])
 #endif
 
     // Print basic GPU information.
-    std::cout << "GL_VENDOR   : " << glGetString(GL_VENDOR)   << '\n';
+    std::cout << "GL_VENDOR   : " << glGetString(GL_VENDOR) << '\n';
     std::cout << "GL_RENDERER : " << glGetString(GL_RENDERER) << '\n';
-    std::cout << "GL_VERSION  : " << glGetString(GL_VERSION)  << '\n';
+    std::cout << "GL_VERSION  : " << glGetString(GL_VERSION) << '\n';
 
     // Loads scene data from file.
     CS300Parser scene;
@@ -274,54 +237,85 @@ int main(int argc, char* argv[])
     EnsureMeshFiles();
 
     // Configures the camera from scene parameters.
-    // Copies FOV and clip planes from parser values.
     Camera camera;
-    camera.fovY   = glm::radians(scene.fovy);
-    camera.aspect = float(WIN_W) / float(WIN_H);
-    camera.zNear  = scene.nearPlane;
-    camera.zFar   = scene.farPlane;
+    camera.fovY = glm::radians(scene.fovy);
+    camera.aspect = static_cast<float>(WIN_W) / static_cast<float>(WIN_H);
+    camera.zNear = scene.nearPlane;
+    camera.zFar = scene.farPlane;
     camera.InitFromLookAt(scene.camPos, scene.camTarget, scene.camUp);
 
-    // Links shader programs.
-    GLuint mainProg = LinkProgram(k_vertSrc,     k_fragSrc);
-    GLuint normProg = LinkProgram(k_normVertSrc, k_normFragSrc);
+    // Loads shader programs from files.
+    ShaderManager shaderManager;
+    if (!shaderManager.LoadProgram("main", "data/shaders/phong.vert", "data/shaders/phong.frag") ||
+        !shaderManager.LoadProgram("normals", "data/shaders/normals.vert", "data/shaders/normals.frag"))
+    {
+        SDL_GL_DestroyContext(glCtx);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    GLuint mainProg = shaderManager.GetProgram("main");
+    GLuint normProg = shaderManager.GetProgram("normals");
 
     // Gets uniform locations for shaders.
-    // uMVP for transform and uUseTexture for debug texture mode.
-    GLint uMVP        = glGetUniformLocation(mainProg, "uMVP");
+    GLint uModel = glGetUniformLocation(mainProg, "uModel");
+    GLint uView = glGetUniformLocation(mainProg, "uView");
+    GLint uProj = glGetUniformLocation(mainProg, "uProj");
     GLint uUseTexture = glGetUniformLocation(mainProg, "uUseTexture");
-    GLint uNormMVP    = glGetUniformLocation(normProg,  "uMVP");
+    GLint uDiffuseTexture = glGetUniformLocation(mainProg, "uDiffuseTexture");
+    GLint uCameraPos = glGetUniformLocation(mainProg, "uCameraPos");
+    GLint uShininess = glGetUniformLocation(mainProg, "uShininess");
+    GLint uLightNum = glGetUniformLocation(mainProg, "uLightNum");
+
+    std::array<LightUniformLoc, kMaxLights> lightUniforms{};
+    for (int i = 0; i < kMaxLights; ++i)
+    {
+        const std::string prefix = "uLight[" + std::to_string(i) + "]";
+        lightUniforms[i].type = glGetUniformLocation(mainProg, (prefix + ".type").c_str());
+        lightUniforms[i].position = glGetUniformLocation(mainProg, (prefix + ".position").c_str());
+        lightUniforms[i].direction = glGetUniformLocation(mainProg, (prefix + ".direction").c_str());
+        lightUniforms[i].color = glGetUniformLocation(mainProg, (prefix + ".color").c_str());
+        lightUniforms[i].ambient = glGetUniformLocation(mainProg, (prefix + ".ambient").c_str());
+        lightUniforms[i].attenuation = glGetUniformLocation(mainProg, (prefix + ".attenuation").c_str());
+        lightUniforms[i].innerAngle = glGetUniformLocation(mainProg, (prefix + ".innerAngle").c_str());
+        lightUniforms[i].outerAngle = glGetUniformLocation(mainProg, (prefix + ".outerAngle").c_str());
+        lightUniforms[i].falloff = glGetUniformLocation(mainProg, (prefix + ".falloff").c_str());
+    }
+
+    GLint uNormMVP = glGetUniformLocation(normProg, "uMVP");
+
+    // Creates fallback texture for diffuse sampling.
+    GLuint fallbackTex = CreateFallbackTexture();
 
     // Initial rendering toggles.
-    // These are changed at runtime with keyboard input.
-    bool showNormals  = false;
-    bool faceNormals  = true;
-    bool textureMode  = false;
-    bool wireframe    = false;
-    int  currentSlices = 4;
+    bool showNormals = false;
+    bool faceNormals = true;
+    bool textureMode = false;
+    bool wireframe = false;
+    int currentSlices = 4;
 
     // Builds scene objects from loaded data.
     std::vector<SceneObject> objects;
     objects.reserve(scene.objects.size());
 
-    for (const auto& so : scene.objects)
+    for (const auto & so : scene.objects)
     {
         SceneObject obj;
         obj.name = so.name;
-        obj.pos  = so.pos;
-        obj.rot  = so.rot;
-        obj.sca  = so.sca;
+        obj.pos = so.pos;
+        obj.rot = so.rot;
+        obj.sca = so.sca;
+        obj.material.shininess = so.ns;
 
-        // Resolves textual mesh id into internal enum/type.
-        const std::string& ms = so.mesh;
-        if      (ms == "PLANE")    obj.kind = MeshKind::PLANE;
-        else if (ms == "CUBE")     obj.kind = MeshKind::CUBE;
-        else if (ms == "CONE")     obj.kind = MeshKind::CONE;
+        const std::string & ms = so.mesh;
+        if (ms == "PLANE") obj.kind = MeshKind::PLANE;
+        else if (ms == "CUBE") obj.kind = MeshKind::CUBE;
+        else if (ms == "CONE") obj.kind = MeshKind::CONE;
         else if (ms == "CYLINDER") obj.kind = MeshKind::CYLINDER;
-        else if (ms == "SPHERE")   obj.kind = MeshKind::SPHERE;
+        else if (ms == "SPHERE") obj.kind = MeshKind::SPHERE;
         else { obj.kind = MeshKind::OBJ; obj.objPath = ms; }
 
-        // Builds mesh geometry and uploads initial buffers.
         obj.mesh = BuildMesh(obj.kind, obj.objPath, currentSlices);
         obj.mesh.Upload(faceNormals);
         objects.push_back(std::move(obj));
@@ -341,24 +335,17 @@ int main(int argc, char* argv[])
     {
         // Computes frame delta time in seconds.
         Uint64 nowTick = SDL_GetTicks();
-        float  dt      = float(nowTick - prevTick) * 0.001f;
-        // Keep current tick as reference for next frame.
-        prevTick       = nowTick;
+        float dt = static_cast<float>(nowTick - prevTick) * 0.001f;
+        prevTick = nowTick;
 
         // Rebuilds meshes if the number of cuts changes.
         auto rebuildSlicedMeshes = [&]() {
-            for (auto& o : objects)
+            for (auto & o : objects)
             {
-                // Only parametric meshes depend on slice count.
-                if (o.kind == MeshKind::CONE ||
-                    o.kind == MeshKind::CYLINDER ||
-                    o.kind == MeshKind::SPHERE)
+                if (o.kind == MeshKind::CONE || o.kind == MeshKind::CYLINDER || o.kind == MeshKind::SPHERE)
                 {
-                    // Release old GPU resources before replacing mesh data.
                     o.mesh.Free();
-                    // Recreate geometry with new tessellation.
                     o.mesh = BuildMesh(o.kind, o.objPath, currentSlices);
-                    // Upload with current normal mode.
                     o.mesh.Upload(faceNormals);
                 }
             }
@@ -369,114 +356,140 @@ int main(int argc, char* argv[])
         while (SDL_PollEvent(&ev))
         {
             if (ev.type == SDL_EVENT_QUIT)
+            {
                 quit = true;
+            }
 
-            // Handles one-shot key toggles and parameters.
             if (ev.type == SDL_EVENT_KEY_DOWN)
             {
                 switch (ev.key.scancode)
                 {
-                case SDL_SCANCODE_ESCAPE: quit = true; break;
+                case SDL_SCANCODE_ESCAPE:
+                    quit = true;
+                    break;
 
                 case SDL_SCANCODE_N:
-                    // Toggle display of generated normal lines.
                     showNormals = !showNormals;
                     std::cout << "Normals: " << (showNormals ? "ON" : "OFF") << '\n';
                     break;
 
                 case SDL_SCANCODE_F:
                     faceNormals = !faceNormals;
-                    // Refreshes uploaded normals for all objects.
-                    for (auto& o : objects) o.mesh.SetNormalMode(faceNormals);
+                    for (auto & o : objects)
+                    {
+                        o.mesh.SetNormalMode(faceNormals);
+                    }
                     std::cout << "Normal mode: " << (faceNormals ? "FACE" : "AVERAGED") << '\n';
                     break;
 
                 case SDL_SCANCODE_M:
-                    // Toggle wireframe/fill rasterization mode.
                     wireframe = !wireframe;
                     std::cout << "Wireframe: " << (wireframe ? "ON" : "OFF") << '\n';
                     break;
 
                 case SDL_SCANCODE_T:
-                    // Toggle UV debug coloring in fragment shader.
                     textureMode = !textureMode;
                     std::cout << "Texture mode: " << (textureMode ? "ON" : "OFF") << '\n';
                     break;
 
-                
                 case SDL_SCANCODE_EQUALS:
                 case SDL_SCANCODE_KP_PLUS:
                 case SDL_SCANCODE_Z:
-                    // Increases tessellation density.
                     currentSlices += 2;
                     rebuildSlicedMeshes();
                     break;
 
-                
                 case SDL_SCANCODE_MINUS:
                 case SDL_SCANCODE_KP_MINUS:
                 case SDL_SCANCODE_X:
-                    // Decreases tessellation but keeps a minimum value.
                     currentSlices = std::max(4, currentSlices - 2);
                     rebuildSlicedMeshes();
                     break;
 
-                default: break;
+                default:
+                    break;
                 }
             }
         }
 
-        // Updates the camera.
-        // Uses current keyboard state for continuous movement keys.
+        // Updates camera.
         camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);
 
         // View and projection matrices.
-        glm::mat4 V  = camera.GetView();
-        glm::mat4 P  = camera.GetProjection();
-        // Combined matrix reused for every object in this frame.
-        glm::mat4 VP = P * V;
+        glm::mat4 V = camera.GetView();
+        glm::mat4 P = camera.GetProjection();
+        glm::vec3 camPos = camera.GetPosition();
 
         // Clears the screen and sets polygon mode.
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // Draws either wireframe or filled polygons.
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 
         // Draws scene objects.
         glUseProgram(mainProg);
+        glUniformMatrix4fv(uView, 1, GL_FALSE, glm::value_ptr(V));
+        glUniformMatrix4fv(uProj, 1, GL_FALSE, glm::value_ptr(P));
+        glUniform3fv(uCameraPos, 1, glm::value_ptr(camPos));
 
-        for (const auto& obj : objects)
+        const int activeLightCount = std::min<int>(static_cast<int>(scene.lights.size()), kMaxLights);
+        glUniform1i(uLightNum, activeLightCount);
+
+        for (int i = 0; i < activeLightCount; ++i)
         {
-            // Skips objects with invalid GPU resources.
-            if (!obj.mesh.IsValid()) continue;
+            const auto & light = scene.lights[static_cast<size_t>(i)];
+            glm::vec3 lightDir = light.direction;
+            if (glm::length(lightDir) < 1e-6f)
+            {
+                lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
+            }
+            else
+            {
+                lightDir = glm::normalize(lightDir);
+            }
+            glUniform1i(lightUniforms[i].type, ToShaderLightType(light.type));
+            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(light.position));
+            glUniform3fv(lightUniforms[i].direction, 1, glm::value_ptr(lightDir));
+            glUniform3fv(lightUniforms[i].color, 1, glm::value_ptr(light.color));
+            glUniform1f(lightUniforms[i].ambient, light.ambient);
+            glUniform3fv(lightUniforms[i].attenuation, 1, glm::value_ptr(light.attenuation));
+            glUniform1f(lightUniforms[i].innerAngle, light.innerAngle);
+            glUniform1f(lightUniforms[i].outerAngle, light.outerAngle);
+            glUniform1f(lightUniforms[i].falloff, light.falloff);
+        }
 
-            glm::mat4 M   = obj.ModelMatrix();
-            glm::mat4 MVP = VP * M;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, fallbackTex);
+        glUniform1i(uDiffuseTexture, 0);
 
-            // Sends transform and mode uniforms.
-            glUniformMatrix4fv(uMVP,       1, GL_FALSE, glm::value_ptr(MVP));
+        for (const auto & obj : objects)
+        {
+            if (!obj.mesh.IsValid())
+            {
+                continue;
+            }
+
+            glm::mat4 M = obj.ModelMatrix();
+            glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(M));
             glUniform1i(uUseTexture, textureMode ? 1 : 0);
-
-            // Draw main triangle geometry.
+            glUniform1f(uShininess, obj.material.shininess);
             obj.mesh.Draw();
         }
 
         // Draws normals if enabled.
         if (showNormals)
         {
-            // Forces fill mode for clearer normal lines.
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             glUseProgram(normProg);
 
-            for (const auto& obj : objects)
+            for (const auto & obj : objects)
             {
-                // Skips if normal-line buffers are missing.
-                if (!obj.mesh.HasNormals()) continue;
+                if (!obj.mesh.HasNormals())
+                {
+                    continue;
+                }
 
-                glm::mat4 MVP = VP * obj.ModelMatrix();
+                glm::mat4 MVP = P * V * obj.ModelMatrix();
                 glUniformMatrix4fv(uNormMVP, 1, GL_FALSE, glm::value_ptr(MVP));
-                // Draw yellow lines that represent normals.
                 obj.mesh.DrawNormals();
             }
         }
@@ -487,16 +500,14 @@ int main(int argc, char* argv[])
     }
 
     // Releases resources and shuts down SDL.
-    for (auto& o : objects) o.mesh.Free();
-    glDeleteProgram(mainProg);
-    glDeleteProgram(normProg);
+    for (auto & o : objects)
+    {
+        o.mesh.Free();
+    }
+    glDeleteTextures(1, &fallbackTex);
 
     SDL_GL_DestroyContext(glCtx);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
 }
-
-
-
-
