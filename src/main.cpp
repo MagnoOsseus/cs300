@@ -139,6 +139,15 @@ static GLuint CreateFallbackTexture()
     const int texH = 128;
     std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
 
+    const glm::vec3 palette[6] = {
+        glm::vec3(0.0f, 0.0f, 1.0f), // blue
+        glm::vec3(0.0f, 1.0f, 1.0f), // cyan
+        glm::vec3(0.0f, 1.0f, 0.0f), // green
+        glm::vec3(1.0f, 1.0f, 0.0f), // yellow
+        glm::vec3(1.0f, 0.0f, 0.0f), // red
+        glm::vec3(1.0f, 0.0f, 1.0f)  // magenta
+    };
+
     for (int y = 0; y < texH; ++y)
     {
         for (int x = 0; x < texW; ++x)
@@ -146,9 +155,16 @@ static GLuint CreateFallbackTexture()
             float u = static_cast<float>(x) / static_cast<float>(texW - 1);
             float v = static_cast<float>(y) / static_cast<float>(texH - 1);
             size_t idx = static_cast<size_t>((y * texW + x) * 3);
-            pixels[idx + 0] = static_cast<unsigned char>(u * 255.0f);
-            pixels[idx + 1] = static_cast<unsigned char>(v * 255.0f);
-            pixels[idx + 2] = 0;
+
+            float tiledU = u - std::floor(u);
+            float tiledV = (1.0f - v) - std::floor(1.0f - v);
+            int cellX = std::clamp(static_cast<int>(std::floor(tiledU * 6.0f)), 0, 5);
+            int cellY = std::clamp(static_cast<int>(std::floor(tiledV * 6.0f)), 0, 5);
+            const glm::vec3 color = palette[(cellX + cellY) % 6];
+
+            pixels[idx + 0] = static_cast<unsigned char>(color.r * 255.0f);
+            pixels[idx + 1] = static_cast<unsigned char>(color.g * 255.0f);
+            pixels[idx + 2] = static_cast<unsigned char>(color.b * 255.0f);
         }
     }
 
