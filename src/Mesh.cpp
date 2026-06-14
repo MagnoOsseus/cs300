@@ -360,8 +360,8 @@ Mesh Mesh::MakeCube()
     glm::vec2 uvsTop[4] = {{1,0},{0,0},{0,1},{1,1}};
 
     // Bottom face (-Y) verts: v0(-x,-z) v1(+x,-z) v2(+x,+z) v3(-x,+z).
-    // Same XZ formula → yellow(1,1) at back-left.
-    glm::vec2 uvsBtm[4] = {{1,1},{0,1},{0,0},{1,0}};
+    // Swap green<->red and black<->yellow on the bottom face.
+    glm::vec2 uvsBtm[4] = {{1,0},{1,1},{0,1},{0,0}};
 
     for (int fi = 0; fi < 6; ++fi)
     {
@@ -421,7 +421,7 @@ Mesh Mesh::MakeCone(int slices)
             m.tris_.push_back(t);
         }
 
-        // Base cap: wedge/pie UVs — center at V=0, rim at V=1, U=angle.
+        // Base cap: angular UVs matching cone top style.
         {
             float u0   = float(i)     / float(slices);
             float u1   = float(i + 1) / float(slices);
@@ -429,8 +429,8 @@ Mesh Mesh::MakeCone(int slices)
 
             RawTri t;
             t.v[0] = {baseCenter, glm::vec2(uMid, 0.0f)};
-            t.v[1] = {b0,         glm::vec2(u0,   1.0f)};
-            t.v[2] = {b1,         glm::vec2(u1,   1.0f)};
+            t.v[1] = {b0,         glm::vec2(u0,   0.0f)};
+            t.v[2] = {b1,         glm::vec2(u1,   0.0f)};
             m.tris_.push_back(t);
         }
     }
