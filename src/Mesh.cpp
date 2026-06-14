@@ -388,11 +388,12 @@ Mesh Mesh::MakeCone(int slices)
 
     for (int i = 0; i < slices; ++i)
     {
-        float a0 = 2.0f * pi * float(i)     / float(slices);
-        float a1 = 2.0f * pi * float(i + 1) / float(slices);
+        float a0 = 2.0f * pi * float(i)           / float(slices);
+        // Use modulo so the last slice closes exactly on vertex 0.
+        float aN = 2.0f * pi * float((i + 1) % slices) / float(slices);
 
         glm::vec3 b0(r * std::cos(a0), bot, r * std::sin(a0));
-        glm::vec3 b1(r * std::cos(a1), bot, r * std::sin(a1));
+        glm::vec3 b1(r * std::cos(aN), bot, r * std::sin(aN));
 
         // Side triangle using cylindrical UVs.
         {
@@ -408,16 +409,16 @@ Mesh Mesh::MakeCone(int slices)
             m.tris_.push_back(t);
         }
 
-        // Base cap triangle using planar UVs.
+        // Base cap triangle using cylindrical UVs (u=angle, v=0 for base).
         {
-            glm::vec2 uvCenter(0.5f, 0.5f);
-            glm::vec2 uv0(0.5f + b0.x, 0.5f + b0.z);
-            glm::vec2 uv1(0.5f + b1.x, 0.5f + b1.z);
+            float u0   = float(i)     / float(slices);
+            float u1   = float(i + 1) / float(slices);
+            float uMid = (u0 + u1) * 0.5f;
 
             RawTri t;
-            t.v[0] = {baseCenter, uvCenter};
-            t.v[1] = {b0,         uv0};
-            t.v[2] = {b1,         uv1};
+            t.v[0] = {baseCenter, glm::vec2(uMid, 0.0f)};
+            t.v[1] = {b0,         glm::vec2(u0,   0.0f)};
+            t.v[2] = {b1,         glm::vec2(u1,   0.0f)};
             m.tris_.push_back(t);
         }
     }
@@ -441,13 +442,14 @@ Mesh Mesh::MakeCylinder(int slices)
 
     for (int i = 0; i < slices; ++i)
     {
-        float a0 = 2.0f * pi * float(i)     / float(slices);
-        float a1 = 2.0f * pi * float(i + 1) / float(slices);
+        float a0 = 2.0f * pi * float(i)               / float(slices);
+        // Use modulo so the last slice closes exactly on vertex 0.
+        float aN = 2.0f * pi * float((i + 1) % slices) / float(slices);
 
         glm::vec3 t0(r * std::cos(a0), top, r * std::sin(a0));
-        glm::vec3 t1(r * std::cos(a1), top, r * std::sin(a1));
+        glm::vec3 t1(r * std::cos(aN), top, r * std::sin(aN));
         glm::vec3 b0(r * std::cos(a0), bot, r * std::sin(a0));
-        glm::vec3 b1(r * std::cos(a1), bot, r * std::sin(a1));
+        glm::vec3 b1(r * std::cos(aN), bot, r * std::sin(aN));
 
         // UV slice range for this side segment.
         float u0 = float(i)     / float(slices);
@@ -468,29 +470,23 @@ Mesh Mesh::MakeCylinder(int slices)
             m.tris_.push_back(tb);
         }
 
-        // Top cap triangle.
+        // Top cap triangle using cylindrical UVs (u=angle, v=1 for top).
         {
-            glm::vec2 uvC(0.5f, 0.5f);
-            glm::vec2 uv1(0.5f + t1.x, 0.5f + t1.z);
-            glm::vec2 uv0(0.5f + t0.x, 0.5f + t0.z);
-
+            float uMid = (u0 + u1) * 0.5f;
             RawTri t;
-            t.v[0] = {topCenter, uvC};
-            t.v[1] = {t1,        uv1};
-            t.v[2] = {t0,        uv0};
+            t.v[0] = {topCenter, glm::vec2(uMid, 1.0f)};
+            t.v[1] = {t1,        glm::vec2(u1,   1.0f)};
+            t.v[2] = {t0,        glm::vec2(u0,   1.0f)};
             m.tris_.push_back(t);
         }
 
-        // Bottom cap triangle.
+        // Bottom cap triangle using cylindrical UVs (u=angle, v=0 for bottom).
         {
-            glm::vec2 uvC(0.5f, 0.5f);
-            glm::vec2 uv0(0.5f + b0.x, 0.5f + b0.z);
-            glm::vec2 uv1(0.5f + b1.x, 0.5f + b1.z);
-
+            float uMid = (u0 + u1) * 0.5f;
             RawTri t;
-            t.v[0] = {botCenter, uvC};
-            t.v[1] = {b0,        uv0};
-            t.v[2] = {b1,        uv1};
+            t.v[0] = {botCenter, glm::vec2(uMid, 0.0f)};
+            t.v[1] = {b0,        glm::vec2(u0,   0.0f)};
+            t.v[2] = {b1,        glm::vec2(u1,   0.0f)};
             m.tris_.push_back(t);
         }
     }
@@ -508,9 +504,14 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     const float pi = glm::pi<float>();
 
     // Helpers to evaluate sphere position and UV.
+    // North (ring==0) and south (ring==rings) poles are snapped to exact coordinates
+    // to avoid sin(0)/sin(pi) floating-point drift. Phi uses (slice % slices) so
+    // the seam vertex at j+1==slices maps to exactly the same position as j==0.
     auto getPos = [&](int ring, int slice) -> glm::vec3 {
+        if (ring == 0)     return glm::vec3(0.0f,  0.5f, 0.0f);
+        if (ring == rings) return glm::vec3(0.0f, -0.5f, 0.0f);
         float theta = pi * float(ring)  / float(rings);
-        float phi   = 2.0f * pi * float(slice) / float(slices);
+        float phi   = 2.0f * pi * float(slice % slices) / float(slices);
         return glm::vec3(
             0.5f * std::sin(theta) * std::cos(phi),
             0.5f * std::cos(theta),
@@ -525,9 +526,9 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     {
         for (int j = 0; j < slices; ++j)
         {
-            // j+1 wraps around to close the seam.
-            int jNext = (j + 1) % (slices + 1); 
-
+            // getPos uses (slice % slices) for phi, so j+1==slices wraps to slice 0
+            // and produces exactly the same float position as the first vertex of the ring,
+            // allowing the averaged-normal pass to merge them at the seam.
             glm::vec3 p00 = getPos(i,   j);
             glm::vec3 p10 = getPos(i,   j + 1);
             glm::vec3 p01 = getPos(i+1, j);
