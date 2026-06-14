@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,13 @@
 class CS300Parser
 {
   public:
+    enum class LightType
+    {
+        Point,
+        Directional,
+        Spot
+    };
+
     void LoadDataFromFile(const char * filename);
 
     float     fovy      = 60.0f;
@@ -39,16 +47,15 @@ class CS300Parser
 
     struct Light
     {
-        glm::vec3 pos;
-        glm::vec3 dir;
-        glm::vec3 col;
-        glm::vec3 att;
-        float     amb     = 0.0f;
-        float     inner   = 0.0f;
-        float     outer   = 30.0f;
-        float     falloff = 1.0f;
-
-        std::string type = "POINT";
+        LightType  type         = LightType::Point;
+        glm::vec3  position{ 0.0f };
+        glm::vec3  direction{ 0.0f, -1.0f, 0.0f };
+        glm::vec3  color{ 1.0f };
+        float      ambient      = 0.0f;
+        glm::vec3  attenuation{ 1.0f, 0.0f, 0.0f };
+        float      innerAngle   = 0.0f;
+        float      outerAngle   = 30.0f;
+        float      falloff      = 1.0f;
 
         std::vector<Animations::Anim> anims;
     };

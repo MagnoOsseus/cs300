@@ -21,10 +21,31 @@
     <ClCompile Include="src\\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\ShaderManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\OGLDebug.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\ShaderManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="data\shaders\phong.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\phong.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\normals.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\normals.frag">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>
+
