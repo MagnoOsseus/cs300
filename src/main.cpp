@@ -140,13 +140,14 @@ static GLuint CreateFallbackTexture()
     const int gridSize = 6;
     std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
 
+    // Paleta base para el patrón UV.
     const glm::vec3 palette[gridSize] = {
-        glm::vec3(0.0f, 0.0f, 1.0f), // azul
-        glm::vec3(0.0f, 1.0f, 1.0f), // cian
-        glm::vec3(0.0f, 1.0f, 0.0f), // verde
-        glm::vec3(1.0f, 1.0f, 0.0f), // amarillo
-        glm::vec3(1.0f, 0.0f, 0.0f), // rojo
-        glm::vec3(1.0f, 0.0f, 1.0f)  // magenta
+        glm::vec3(0.0f, 0.0f, 1.0f),
+        glm::vec3(0.0f, 1.0f, 1.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f),
+        glm::vec3(1.0f, 1.0f, 0.0f),
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(1.0f, 0.0f, 1.0f)
     };
 
     for (int y = 0; y < texH; ++y)
