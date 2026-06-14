@@ -24,6 +24,8 @@ static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 static const int kMaxLights = 8;
 static const float kMinLightDirectionLength = 1e-6f;
+static const float kAmbientBoost = 0.25f;
+static const float kLightMarkerScale = 1.2f;
 
 // Mesh type each scene object can use.
 enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
@@ -72,6 +74,8 @@ struct LightUniformLoc
     GLint outerAngle  = -1;
     GLint falloff     = -1;
 };
+
+
 
 // Creates a mesh from type and parameters.
 static Mesh BuildMesh(MeshKind kind, const std::string & objPath, int slices)
@@ -167,6 +171,106 @@ static GLuint CreateFallbackTexture()
     glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
     return tex;
+}
+
+// Creates a tiny solid-white texture.
+static GLuint CreateWhiteTexture()
+{
+    const unsigned char white[3] = { 255, 255, 255 };
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, white);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+// Compiles a shader from source text.
+static GLuint CompileShaderFromSource(GLenum type, const char * source)
+{
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+
+    GLint ok = GL_FALSE;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+    if (ok != GL_TRUE)
+    {
+        GLint logLen = 0;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLen);
+        std::vector<char> log(static_cast<size_t>(std::max(1, logLen)));
+        glGetShaderInfoLog(shader, logLen, nullptr, log.data());
+        std::cerr << "Light marker shader compile error:\n" << log.data() << '\n';
+        glDeleteShader(shader);
+        return 0;
+    }
+
+    return shader;
+}
+
+// Builds a tiny shader program for white point markers.
+static GLuint CreateLightMarkerProgram()
+{
+    static const char * kMarkerVert = R"glsl(
+#version 430 core
+layout(location = 0) in vec3 aPos;
+uniform mat4 uView;
+uniform mat4 uProj;
+void main()
+{
+    gl_Position = uProj * uView * vec4(aPos, 1.0);
+    gl_PointSize = 10.0;
+}
+)glsl";
+
+    static const char * kMarkerFrag = R"glsl(
+#version 430 core
+out vec4 fragColor;
+void main()
+{
+    fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+}
+)glsl";
+
+    GLuint vs = CompileShaderFromSource(GL_VERTEX_SHADER, kMarkerVert);
+    if (vs == 0)
+    {
+        return 0;
+    }
+
+    GLuint fs = CompileShaderFromSource(GL_FRAGMENT_SHADER, kMarkerFrag);
+    if (fs == 0)
+    {
+        glDeleteShader(vs);
+        return 0;
+    }
+
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    glLinkProgram(prog);
+
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(prog, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE)
+    {
+        GLint logLen = 0;
+        glGetProgramiv(prog, GL_INFO_LOG_LENGTH, &logLen);
+        std::vector<char> log(static_cast<size_t>(std::max(1, logLen)));
+        glGetProgramInfoLog(prog, logLen, nullptr, log.data());
+        std::cerr << "Light marker program link error:\n" << log.data() << '\n';
+        glDeleteProgram(prog);
+        return 0;
+    }
+
+    return prog;
 }
 
 // Entry point: initializes, loads scene, renders, and cleans up.
@@ -267,6 +371,7 @@ int main(int argc, char * argv[])
     GLint uDiffuseTexture = glGetUniformLocation(mainProg, "uDiffuseTexture");
     GLint uCameraPos = glGetUniformLocation(mainProg, "uCameraPos");
     GLint uShininess = glGetUniformLocation(mainProg, "uShininess");
+    GLint uAmbientBoost = glGetUniformLocation(mainProg, "uAmbientBoost");
     GLint uLightNum = glGetUniformLocation(mainProg, "uLightNum");
 
     std::array<LightUniformLoc, kMaxLights> lightUniforms{};
@@ -288,6 +393,11 @@ int main(int argc, char * argv[])
 
     // Creates fallback texture for diffuse sampling.
     GLuint fallbackTex = CreateFallbackTexture();
+    GLuint whiteTex = CreateWhiteTexture();
+
+    // Reuse main shader to render small white spheres at light positions.
+    Mesh lightMarkerMesh = Mesh::MakeSphere(16, 8);
+    lightMarkerMesh.Upload(true);
 
     // Initial rendering toggles.
     bool showNormals = false;
@@ -434,6 +544,7 @@ int main(int argc, char * argv[])
 
         const int activeLightCount = std::min<int>(static_cast<int>(scene.lights.size()), kMaxLights);
         glUniform1i(uLightNum, activeLightCount);
+        glUniform1f(uAmbientBoost, kAmbientBoost);
 
         for (int i = 0; i < activeLightCount; ++i)
         {
@@ -495,6 +606,46 @@ int main(int argc, char * argv[])
             }
         }
 
+        // Draws small white spheres at light positions.
+        if (activeLightCount > 0 && lightMarkerMesh.IsValid())
+        {
+            glUseProgram(mainProg);
+            glUniformMatrix4fv(uView, 1, GL_FALSE, glm::value_ptr(V));
+            glUniformMatrix4fv(uProj, 1, GL_FALSE, glm::value_ptr(P));
+            glUniform3fv(uCameraPos, 1, glm::value_ptr(camPos));
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, whiteTex);
+            glUniform1i(uDiffuseTexture, 0);
+            glUniform1i(uUseTexture, 1);
+            glUniform1f(uShininess, 64.0f);
+
+            // Use one bright white point light located at camera to keep markers visible.
+            glUniform1i(uLightNum, 1);
+            glUniform1f(uAmbientBoost, 1.0f);
+            glUniform1i(lightUniforms[0].type, 0);
+            glUniform3fv(lightUniforms[0].position, 1, glm::value_ptr(camPos));
+            glUniform3fv(lightUniforms[0].direction, 1, glm::value_ptr(glm::vec3(0.0f, -1.0f, 0.0f)));
+            glUniform3fv(lightUniforms[0].color, 1, glm::value_ptr(glm::vec3(1.0f)));
+            glUniform1f(lightUniforms[0].ambient, 1.0f);
+            glUniform3fv(lightUniforms[0].attenuation, 1, glm::value_ptr(glm::vec3(1.0f, 0.0f, 0.0f)));
+            glUniform1f(lightUniforms[0].innerAngle, 0.0f);
+            glUniform1f(lightUniforms[0].outerAngle, 180.0f);
+            glUniform1f(lightUniforms[0].falloff, 1.0f);
+
+            for (int i = 0; i < activeLightCount; ++i)
+            {
+                const glm::vec3 markerPos = scene.lights[static_cast<size_t>(i)].position;
+                glm::mat4 markerModel = glm::translate(glm::mat4(1.0f), markerPos);
+                markerModel = glm::scale(markerModel, glm::vec3(kLightMarkerScale));
+                glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(markerModel));
+                lightMarkerMesh.Draw();
+            }
+
+            // Restore scene light settings for next frame start.
+            glUniform1i(uLightNum, activeLightCount);
+            glUniform1f(uAmbientBoost, kAmbientBoost);
+        }
+
         // Presents the rendered frame.
         glUseProgram(0);
         SDL_GL_SwapWindow(window);
@@ -506,6 +657,8 @@ int main(int argc, char * argv[])
         o.mesh.Free();
     }
     glDeleteTextures(1, &fallbackTex);
+    glDeleteTextures(1, &whiteTex);
+    lightMarkerMesh.Free();
 
     SDL_GL_DestroyContext(glCtx);
     SDL_DestroyWindow(window);

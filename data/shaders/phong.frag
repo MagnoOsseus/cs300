@@ -27,6 +27,7 @@ uniform bool uUseTexture;
 uniform sampler2D uDiffuseTexture;
 uniform vec3 uCameraPos;
 uniform float uShininess;
+uniform float uAmbientBoost;
 uniform int uLightNum;
 uniform Light uLight[LIGHT_NUM_MAX];
 
@@ -114,7 +115,8 @@ void main()
         }
 
         float NdotL = max(dot(N, L), 0.0);
-        vec3 ambientTerm = light.ambient * baseColor * light.color;
+        float ambientStrength = max(light.ambient, 0.0) + uAmbientBoost;
+        vec3 ambientTerm = ambientStrength * baseColor * light.color;
         vec3 diffuseTerm = light.color * baseColor * NdotL;
 
         vec3 specularTerm = vec3(0.0);
