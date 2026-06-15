@@ -5,7 +5,6 @@
 #include <vector>
 
 // Per-vertex data sent to the GPU.
-// position: local-space position, normal: shading direction, uv: texture coordinates.
 struct Vertex
 {
     glm::vec3 position;
@@ -14,7 +13,6 @@ struct Vertex
 };
 
 // Mesh with primitive generation and OpenGL buffer management.
-// Stores raw triangles, builds normals, and uploads draw buffers.
 class Mesh
 {
 public:
@@ -28,7 +26,7 @@ public:
     Mesh& operator=(Mesh&&)      = default;
 
     // Builds and uploads buffers to draw the mesh.
-    // faceNormals=true creates hard edges, false creates smooth averaged normals.
+    // faceNormals=true for hard edges, false for smooth.
     void Upload(bool faceNormals);
 
     // Changes normal mode and re-uploads buffers.
@@ -37,8 +35,7 @@ public:
     // Draws the mesh as triangles.
     void Draw() const;
 
-    // Draws normal lines.
-    // Useful for visual debugging of generated normals.
+    // Draws normal lines for debugging.
     void DrawNormals() const;
 
     // Releases GPU resources.
@@ -48,8 +45,7 @@ public:
     bool IsValid()    const { return vao_ != 0; }
     bool HasNormals() const { return normVao_ != 0; }
 
-    // Basic primitive generators.
-    // All primitives are generated in roughly [-0.5, 0.5] local range.
+    // Basic primitive generators (range approx [-0.5, 0.5]).
     static Mesh MakePlane();
     static Mesh MakeCube();
     static Mesh MakeCone(int slices = 4);
@@ -64,13 +60,11 @@ public:
 
 private:
     // Raw triangles used to rebuild buffers.
-    // Normals are generated later from this raw geometry.
     struct RawVert { glm::vec3 pos; glm::vec2 uv; };
     struct RawTri  { RawVert v[3]; };
     std::vector<RawTri> tris_;
 
     // GPU objects and draw counters.
-    // drawCount_ is index count, normCount_ is line-vertex count.
     GLuint vao_  = 0, vbo_  = 0, ebo_  = 0;
     GLuint normVao_ = 0, normVbo_ = 0;
     int    drawCount_ = 0;
