@@ -64,21 +64,20 @@ struct VertKeyEqual
 void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
                             std::vector<unsigned int>& idx) const
 {
-    // Start from empty output buffers.
     verts.clear();
     idx.clear();
-    // Reserve enough room for one independent vertex per triangle corner.
+    // One independent vertex per triangle corner.
     verts.reserve(tris_.size() * 3);
     idx.reserve(tris_.size() * 3);
 
     for (const auto& tri : tris_)
     {
-        // Compute two edges and their cross product for the face normal.
+        // Face normal from cross product.
         glm::vec3 e1 = tri.v[1].pos - tri.v[0].pos;
         glm::vec3 e2 = tri.v[2].pos - tri.v[0].pos;
         glm::vec3 n  = glm::normalize(glm::cross(e1, e2));
 
-        // Base index where this triangle vertices will be appended.
+        // Start index for this triangle's vertices.
         auto base = static_cast<unsigned int>(verts.size());
         for (int i = 0; i < 3; ++i)
         {
@@ -88,7 +87,6 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
             vert.normal   = n;
             vert.uv       = tri.v[i].uv;
             verts.push_back(vert);
-            // Index points to the freshly pushed vertex.
             idx.push_back(base + i);
         }
     }
@@ -125,7 +123,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
             bool dup = false;
             for (const auto& existing : list)
             {
-                // Ignore normals that are almost equal.
+                // Skip near-duplicate normals.
                 if (glm::length(existing - fn) < 1e-5f) { dup = true; break; }
             }
             if (!dup) list.push_back(fn);
@@ -137,7 +135,6 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
     for (const auto& [pos, normals] : posToNormals)
     {
         glm::vec3 sum(0.0f);
-        // Sum all unique normals sharing this position.
         for (const auto& n : normals) sum += n;
         posToAvgN[pos] = glm::normalize(sum);
     }
@@ -155,7 +152,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
             auto it = vertMap.find(key);
             if (it == vertMap.end())
             {
-                // New unique vertex key: create one output vertex.
+                // New vertex, add it.
                 auto newIdx = static_cast<unsigned int>(verts.size());
                 vertMap[key] = newIdx;
                 Vertex vert;
@@ -178,7 +175,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
 void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
                          const std::vector<unsigned int>& idx)
 {
-    // Lazily create OpenGL objects once.
+    // Create buffers on first upload.
     if (vao_ == 0) glGenVertexArrays(1, &vao_);
     if (vbo_ == 0) glGenBuffers(1, &vbo_);
     if (ebo_ == 0) glGenBuffers(1, &ebo_);
@@ -212,7 +209,7 @@ void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                           reinterpret_cast<void*>(offsetof(Vertex, uv)));
 
-    // Unbind to avoid accidental external modifications.
+    // Unbind to avoid accidental changes.
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
@@ -223,7 +220,7 @@ void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
 // Creates and uploads line vertices used to draw normals.
 void Mesh::UploadNormalLines(const std::vector<Vertex>& verts, float length)
 {
-    // Each source vertex creates a line segment: start and end.
+    // Two points per vertex: base and tip.
     std::vector<glm::vec3> lineVerts;
     lineVerts.reserve(verts.size() * 2);
     for (const auto& v : verts)
@@ -514,10 +511,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     Mesh m;
     const float pi = glm::pi<float>();
 
-    // Helpers to evaluate sphere position and UV.
-    // North (ring==0) and south (ring==rings) poles are snapped to exact coordinates
-    // to avoid sin(0)/sin(pi) floating-point drift. Phi uses (slice % slices) so
-    // the seam vertex at j+1==slices maps to exactly the same position as j==0.
+    // Helpers to get sphere position and UV at a ring/slice.
     auto getPos = [&](int ring, int slice) -> glm::vec3 {
         if (ring == 0)     return glm::vec3(0.0f,  0.5f, 0.0f);
         if (ring == rings) return glm::vec3(0.0f, -0.5f, 0.0f);
@@ -538,9 +532,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     {
         for (int j = 0; j < slices; ++j)
         {
-            // getPos uses (slice % slices) for phi, so j+1==slices wraps to slice 0
-            // and produces exactly the same float position as the first vertex of the ring,
-            // allowing the averaged-normal pass to merge them at the seam.
+            // getPos wraps (slice % slices) so the seam closes exactly.
             glm::vec3 p00 = getPos(i,   j);
             glm::vec3 p10 = getPos(i,   j + 1);
             glm::vec3 p01 = getPos(i+1, j);
@@ -605,7 +597,7 @@ Mesh Mesh::LoadOBJ(const std::string& path)
     std::vector<glm::vec3> normals;
     std::vector<glm::vec2> texcoords;
 
-    // Face vertex indices (OBJ is 1-based).
+    // Face indices (OBJ is 1-based).
     struct FaceVert { int p, t, n; };
     struct Face { FaceVert v[3]; };
     std::vector<Face> faces;
@@ -638,7 +630,7 @@ Mesh Mesh::LoadOBJ(const std::string& path)
         }
         else if (token == "f")
         {
-            // Parse polygon face and triangulate by fan method.
+            // Parse face and triangulate by fan.
             std::vector<FaceVert> fv;
             std::string tok;
             while (ss >> tok)

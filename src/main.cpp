@@ -144,7 +144,7 @@ static GLuint CreateFallbackTexture()
     const int gridSize = 6;
     std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
 
-    // Paleta base para el patrón UV.
+    // UV color palette for the fallback texture.
     const glm::vec3 palette[gridSize] = {
         glm::vec3(0.0f, 0.0f, 1.0f),
         glm::vec3(0.0f, 1.0f, 1.0f),
@@ -298,7 +298,7 @@ void main()
 // Entry point: initializes, loads scene, renders, and cleans up.
 int main(int argc, char * argv[])
 {
-    // Uses optional scene path from argv; defaults to scene_A1.txt.
+    // Scene file from argv, defaults to scene_A1.txt.
     const char * sceneFile = (argc > 1) ? argv[1] : "scene_A1.txt";
 
     // SDL initialization.
@@ -413,11 +413,11 @@ int main(int argc, char * argv[])
 
     GLint uNormMVP = glGetUniformLocation(normProg, "uMVP");
 
-    // Creates fallback texture for diffuse sampling.
+    // Fallback and white textures.
     GLuint fallbackTex = CreateFallbackTexture();
     GLuint whiteTex = CreateWhiteTexture();
 
-    // Reuse main shader to render small white spheres at light positions.
+    // Small sphere to mark light positions.
     Mesh lightMarkerMesh = Mesh::MakeSphere(16, 8);
     lightMarkerMesh.Upload(true);
 
@@ -452,20 +452,20 @@ int main(int argc, char * argv[])
         obj.mesh = BuildMesh(obj.kind, obj.objPath, currentSlices);
         obj.mesh.Upload(faceNormals);
         obj.anims = so.anims;
-        obj.currPos = obj.pos; // initialize animated position to original
+        obj.currPos = obj.pos; // start animated position at original
         objects.push_back(std::move(obj));
     }
 
     // Enables depth testing.
     glEnable(GL_DEPTH_TEST);
 
-    // Stores previous tick for frame delta time.
+    // Previous tick for delta time.
     Uint64 prevTick = SDL_GetTicks();
 
-    // Tracks total elapsed time in seconds for animations.
+    // Total time elapsed for animations.
     float elapsedTime = 0.0f;
 
-    // Animated light positions (updated every frame; original positions stay in scene.lights).
+    // Animated light positions (originals stay in scene.lights).
     std::vector<glm::vec3> lightCurrPos(scene.lights.size());
     for (size_t i = 0; i < scene.lights.size(); ++i)
     {
@@ -478,7 +478,7 @@ int main(int argc, char * argv[])
 
     while (!quit)
     {
-        // Computes frame delta time in seconds.
+        // Delta time in seconds.
         Uint64 nowTick = SDL_GetTicks();
         float dt = static_cast<float>(nowTick - prevTick) * 0.001f;
         prevTick = nowTick;
@@ -561,7 +561,7 @@ int main(int argc, char * argv[])
         // Updates camera.
         camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);
 
-        // Updates object animations: always start from the original position.
+        // Update object animations from original position.
         for (auto & obj : objects)
         {
             obj.currPos = obj.pos;
@@ -571,7 +571,7 @@ int main(int argc, char * argv[])
             }
         }
 
-        // Updates light animations: always start from the original position.
+        // Update light animations from original position.
         for (size_t i = 0; i < scene.lights.size(); ++i)
         {
             lightCurrPos[i] = scene.lights[i].position;
@@ -674,7 +674,7 @@ int main(int argc, char * argv[])
             glUniform1i(uUseTexture, 1);
             glUniform1f(uShininess, 64.0f);
 
-            // Use one bright white point light located at camera to keep markers visible.
+            // Bright point at camera so markers are always visible.
             glUniform1i(uLightNum, 1);
             glUniform1f(uAmbientBoost, 1.0f);
             glUniform1i(lightUniforms[0].type, 0);
@@ -696,7 +696,7 @@ int main(int argc, char * argv[])
                 lightMarkerMesh.Draw();
             }
 
-            // Restore scene light settings for next frame start.
+            // Restore scene lights.
             glUniform1i(uLightNum, activeLightCount);
             glUniform1f(uAmbientBoost, kAmbientBoost);
         }
