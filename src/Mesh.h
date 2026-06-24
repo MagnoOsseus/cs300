@@ -10,6 +10,8 @@ struct Vertex
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec2 uv;
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
 };
 
 // Mesh with primitive generation and OpenGL buffer management.
@@ -83,4 +85,3 @@ private:
     // Uploads line buffer to visualize normals.
     void UploadNormalLines(const std::vector<Vertex>& verts, float length = 0.1f);
 };
-

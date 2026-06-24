@@ -157,6 +157,24 @@ void CS300Parser::LoadDataFromFile(const char * filename)
                 objects.back().mesh = mesh;
             }
         }
+        else if (id == "texture" || id == "diffuseMap")
+        {
+            std::string texturePath;
+            inFile >> texturePath;
+            if (objects.size() > 0)
+            {
+                objects.back().diffuseTexture = texturePath;
+            }
+        }
+        else if (id == "normalMap")
+        {
+            std::string texturePath;
+            inFile >> texturePath;
+            if (objects.size() > 0)
+            {
+                objects.back().normalTexture = texturePath;
+            }
+        }
         else if (id == "shininess")
         {
             float ns = ReadFloat(inFile);

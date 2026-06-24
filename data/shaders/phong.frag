@@ -19,13 +19,16 @@ struct Light
     float falloff;
 };
 
-in vec3 vWorldPos;
-in vec3 vWorldNormal;
+in vec3 vViewPos;
+in vec3 vViewNormal;
+in vec3 vViewTangent;
+in vec3 vViewBitangent;
 in vec2 vUV;
 
 uniform bool uUseTexture;
 uniform sampler2D uDiffuseTexture;
-uniform vec3 uCameraPos;
+uniform bool uUseNormalMap;
+uniform sampler2D uNormalTexture;
 uniform float uShininess;
 uniform float uAmbientBoost;
 uniform int uLightNum;
@@ -89,8 +92,13 @@ void main()
         return;
     }
 
-    vec3 N = normalize(vWorldNormal);
-    vec3 V = normalize(uCameraPos - vWorldPos);
+    vec3 NBase = normalize(vViewNormal);
+    vec3 T = normalize(vViewTangent - dot(vViewTangent, NBase) * NBase);
+    vec3 B = normalize(vViewBitangent - dot(vViewBitangent, NBase) * NBase);
+    mat3 TBN = mat3(T, B, NBase);
+    vec3 mapNormal = texture(uNormalTexture, vUV).rgb * 2.0 - 1.0;
+    vec3 N = uUseNormalMap ? normalize(TBN * normalize(mapNormal)) : NBase;
+    vec3 V = normalize(-vViewPos);
     vec3 finalColor = vec3(0.0);
 
     for (int i = 0; i < uLightNum; ++i)
@@ -106,7 +114,7 @@ void main()
         }
         else
         {
-            vec3 toLight = light.position - vWorldPos;
+            vec3 toLight = light.position - vViewPos;
             distanceToLight = length(toLight);
             if (distanceToLight > 0.0)
             {
@@ -128,7 +136,7 @@ void main()
         }
 
         float attenuation = ComputeAttenuation(light, distanceToLight);
-        vec3 lightToFragment = normalize(vWorldPos - light.position);
+        vec3 lightToFragment = normalize(vViewPos - light.position);
         float spotFactor = ComputeSpotFactor(light, lightToFragment);
 
         float lightScale = (light.type == LIGHT_TYPE_SPOT) ? spotFactor : 1.0;
