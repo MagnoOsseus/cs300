@@ -1,7 +1,9 @@
 #include "CS300Parser.h"
 
+#include <cmath>
 #include <iostream>
 #include <fstream>
+#include <glm/gtc/constants.hpp>
 
 namespace
 {
@@ -247,9 +249,12 @@ void CS300Parser::LoadDataFromFile(const char * filename)
 
             if (last == LastAdded::LIGHT && lights.size() > 0)
             {
-                lights.back().innerAngle = spotAtt.x;
-                lights.back().outerAngle = spotAtt.y;
-                lights.back().falloff = spotAtt.z;
+                lights.back().innerAngle    = spotAtt.x;
+                lights.back().outerAngle    = spotAtt.y;
+                lights.back().falloff       = spotAtt.z;
+                // Precompute cosines so the shader can use them directly.
+                lights.back().innerAngleCos = std::cos(glm::radians(spotAtt.x));
+                lights.back().outerAngleCos = std::cos(glm::radians(spotAtt.y));
             }
         }
         else if (Animations::NameToUpdater.find(id) != Animations::NameToUpdater.end())

@@ -14,8 +14,8 @@ struct Light
     vec3 color;
     float ambient;
     vec3 attenuation;
-    float innerAngle;
-    float outerAngle;
+    float innerAngleCos;
+    float outerAngleCos;
     float falloff;
 };
 
@@ -51,8 +51,9 @@ float ComputeSpotFactor(Light light, vec3 lightToFragment)
     vec3 dir = normalize(light.direction);
     float cosAlpha = dot(normalize(lightToFragment), dir);
 
-    float cosInner = cos(radians(light.innerAngle));
-    float cosOuter = cos(radians(light.outerAngle));
+    // Cosine values are precomputed on the CPU at load time.
+    float cosInner = light.innerAngleCos;
+    float cosOuter = light.outerAngleCos;
 
     if (cosAlpha <= cosOuter)
     {
