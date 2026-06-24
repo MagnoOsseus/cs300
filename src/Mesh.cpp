@@ -59,6 +59,45 @@ struct VertKeyEqual
     }
 };
 
+static glm::vec3 SafeNormalize(const glm::vec3& v, const glm::vec3& fallback)
+{
+    const float len = glm::length(v);
+    if (len < 1e-6f)
+    {
+        return fallback;
+    }
+    return v / len;
+}
+
+static void ComputeTriangleTangentBitangent(const glm::vec3& p0,
+                                            const glm::vec3& p1,
+                                            const glm::vec3& p2,
+                                            const glm::vec2& uv0,
+                                            const glm::vec2& uv1,
+                                            const glm::vec2& uv2,
+                                            glm::vec3& tangent,
+                                            glm::vec3& bitangent)
+{
+    const glm::vec3 v1 = p1 - p0;
+    const glm::vec3 v2 = p2 - p0;
+    const glm::vec2 dUV1 = uv1 - uv0;
+    const glm::vec2 dUV2 = uv2 - uv0;
+
+    const float det = dUV1.x * dUV2.y - dUV1.y * dUV2.x;
+    if (std::abs(det) > 1e-8f)
+    {
+        const float r = 1.0f / det;
+        tangent = (v1 * dUV2.y - v2 * dUV1.y) * r;
+        bitangent = (v2 * dUV1.x - v1 * dUV2.x) * r;
+        return;
+    }
+
+    const glm::vec3 n = SafeNormalize(glm::cross(v1, v2), glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::vec3 up = (std::abs(n.y) > 0.999f) ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+    tangent = SafeNormalize(glm::cross(up, n), glm::vec3(1.0f, 0.0f, 0.0f));
+    bitangent = SafeNormalize(glm::cross(n, tangent), glm::vec3(0.0f, 0.0f, 1.0f));
+}
+
 // Builds a non-indexed-like vertex buffer with one normal per triangle.
 // This produces flat shading.
 void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
@@ -76,6 +115,9 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
         glm::vec3 e1 = tri.v[1].pos - tri.v[0].pos;
         glm::vec3 e2 = tri.v[2].pos - tri.v[0].pos;
         glm::vec3 n  = glm::normalize(glm::cross(e1, e2));
+        glm::vec3 t(0.0f), b(0.0f);
+        ComputeTriangleTangentBitangent(tri.v[0].pos, tri.v[1].pos, tri.v[2].pos,
+                                        tri.v[0].uv, tri.v[1].uv, tri.v[2].uv, t, b);
 
         // Start index for this triangle's vertices.
         auto base = static_cast<unsigned int>(verts.size());
@@ -86,6 +128,8 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
             // All three vertices use the same face normal.
             vert.normal   = n;
             vert.uv       = tri.v[i].uv;
+            vert.tangent = t;
+            vert.bitangent = b;
             verts.push_back(vert);
             idx.push_back(base + i);
         }
@@ -143,9 +187,16 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
     std::unordered_map<VertKey, unsigned int, VertKeyHash, VertKeyEqual> vertMap;
     verts.reserve(tris_.size() * 3);
     idx.reserve(tris_.size() * 3);
+    std::vector<glm::vec3> tangentSums;
+    std::vector<glm::vec3> bitangentSums;
 
     for (const auto& tri : tris_)
     {
+        glm::vec3 triTangent(0.0f), triBitangent(0.0f);
+        ComputeTriangleTangentBitangent(tri.v[0].pos, tri.v[1].pos, tri.v[2].pos,
+                                        tri.v[0].uv, tri.v[1].uv, tri.v[2].uv,
+                                        triTangent, triBitangent);
+
         for (int vi = 0; vi < 3; ++vi)
         {
             VertKey key{ tri.v[vi].pos, tri.v[vi].uv };
@@ -159,15 +210,35 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
                 vert.position = tri.v[vi].pos;
                 vert.normal   = posToAvgN.at(tri.v[vi].pos);
                 vert.uv       = tri.v[vi].uv;
+                vert.tangent = glm::vec3(0.0f);
+                vert.bitangent = glm::vec3(0.0f);
                 verts.push_back(vert);
+                tangentSums.push_back(glm::vec3(0.0f));
+                bitangentSums.push_back(glm::vec3(0.0f));
                 idx.push_back(newIdx);
+                tangentSums[newIdx] += triTangent;
+                bitangentSums[newIdx] += triBitangent;
             }
             else
             {
                 // Reuse previously created vertex index.
                 idx.push_back(it->second);
+                tangentSums[it->second] += triTangent;
+                bitangentSums[it->second] += triBitangent;
             }
         }
+    }
+
+    for (size_t i = 0; i < verts.size(); ++i)
+    {
+        const glm::vec3 n = SafeNormalize(verts[i].normal, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 t = tangentSums[i] - n * glm::dot(n, tangentSums[i]);
+        t = SafeNormalize(t, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec3 b = bitangentSums[i] - n * glm::dot(n, bitangentSums[i]);
+        b -= t * glm::dot(t, b);
+        b = SafeNormalize(b, glm::cross(n, t));
+        verts[i].tangent = t;
+        verts[i].bitangent = b;
     }
 }
 
@@ -208,6 +279,16 @@ void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                           reinterpret_cast<void*>(offsetof(Vertex, uv)));
+
+    // Attribute 3: tangent.
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          reinterpret_cast<void*>(offsetof(Vertex, tangent)));
+
+    // Attribute 4: bitangent.
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          reinterpret_cast<void*>(offsetof(Vertex, bitangent)));
 
     // Unbind to avoid accidental changes.
     glBindVertexArray(0);

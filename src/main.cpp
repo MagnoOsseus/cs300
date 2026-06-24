@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <GL/glew.h>
@@ -20,6 +21,15 @@
 #include "ShaderManager.h"
 #include "animations.h"
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "windowscodecs.lib")
+#endif
+
 // Window size.
 static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
@@ -35,6 +45,11 @@ enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
 struct Material
 {
     float shininess = 10.0f;
+    std::string diffuseTexturePath;
+    std::string normalTexturePath;
+    GLuint diffuseTexture = 0;
+    GLuint normalTexture = 0;
+    bool hasNormalMap = false;
 };
 
 // Scene object with transform and mesh.
@@ -211,6 +226,156 @@ static GLuint CreateWhiteTexture()
     return tex;
 }
 
+// Creates a tiny default normal texture in tangent space.
+static GLuint CreateDefaultNormalTexture()
+{
+    const unsigned char normal[3] = { 128, 128, 255 };
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, normal);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
+// Resolves a texture path from scene data to an existing file path.
+static std::string ResolveTexturePath(const std::string& path)
+{
+    namespace fs = std::filesystem;
+    static constexpr const char* kSceneTexturePrefix = "data/textures/";
+    if (path.empty())
+    {
+        return std::string();
+    }
+    if (fs::exists(path))
+    {
+        return path;
+    }
+    if (path.rfind(kSceneTexturePrefix, 0) == 0)
+    {
+        fs::path remap = fs::path("data/normal_maps/textures") / path.substr(std::string(kSceneTexturePrefix).size());
+        if (fs::exists(remap))
+        {
+            return remap.string();
+        }
+    }
+    return path;
+}
+
+#ifdef _WIN32
+static bool WicLoadRGBA(const std::string& path, std::vector<unsigned char>& pixels, int& width, int& height)
+{
+    using Microsoft::WRL::ComPtr;
+
+    const int utf16Len = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
+    if (utf16Len <= 0)
+    {
+        return false;
+    }
+    std::vector<wchar_t> widePath(static_cast<size_t>(utf16Len));
+    if (MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, widePath.data(), utf16Len) <= 0)
+    {
+        return false;
+    }
+
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory,
+                                nullptr,
+                                CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&factory))))
+    {
+        return false;
+    }
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(factory->CreateDecoderFromFilename(widePath.data(),
+                                                  nullptr,
+                                                  GENERIC_READ,
+                                                  WICDecodeMetadataCacheOnLoad,
+                                                  &decoder)))
+    {
+        return false;
+    }
+
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if (FAILED(decoder->GetFrame(0, &frame)))
+    {
+        return false;
+    }
+
+    ComPtr<IWICFormatConverter> converter;
+    if (FAILED(factory->CreateFormatConverter(&converter)))
+    {
+        return false;
+    }
+    if (FAILED(converter->Initialize(frame.Get(),
+                                     GUID_WICPixelFormat32bppRGBA,
+                                     WICBitmapDitherTypeNone,
+                                     nullptr,
+                                     0.0,
+                                     WICBitmapPaletteTypeCustom)))
+    {
+        return false;
+    }
+
+    UINT w = 0;
+    UINT h = 0;
+    if (FAILED(converter->GetSize(&w, &h)) || w == 0 || h == 0)
+    {
+        return false;
+    }
+
+    width = static_cast<int>(w);
+    height = static_cast<int>(h);
+    pixels.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u);
+    const UINT stride = w * 4u;
+    const UINT byteSize = stride * h;
+    return SUCCEEDED(converter->CopyPixels(nullptr, stride, byteSize, pixels.data()));
+}
+#endif
+
+// Loads an image file into an OpenGL texture.
+static GLuint LoadTexture2D(const std::string& sourcePath)
+{
+    const std::string path = ResolveTexturePath(sourcePath);
+    int width = 0;
+    int height = 0;
+    std::vector<unsigned char> pixels;
+
+#ifdef _WIN32
+    static bool comInitialized = false;
+    if (!comInitialized)
+    {
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        comInitialized = SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+    }
+    if (!comInitialized || !WicLoadRGBA(path, pixels, width, height))
+    {
+        std::cerr << "Failed to load texture: " << path << '\n';
+        return 0;
+    }
+#else
+    std::cerr << "Texture loading is only implemented for Windows in this build: " << path << '\n';
+    return 0;
+#endif
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return tex;
+}
+
 // Compiles a shader from source text.
 static GLuint CompileShaderFromSource(GLenum type, const char * source)
 {
@@ -298,8 +463,14 @@ void main()
 // Entry point: initializes, loads scene, renders, and cleans up.
 int main(int argc, char * argv[])
 {
-    // Scene file from argv, defaults to scene_A1.txt.
-    const char * sceneFile = (argc > 1) ? argv[1] : "scene_A1.txt";
+    // Scene file from argv, defaults to scene_A2.txt.
+    std::string sceneFileStr = (argc > 1) ? argv[1] : "data/scenes/scene_A2.txt";
+    // If no path separator, assume it's in data/scenes/
+    if (argc > 1 && sceneFileStr.find('/') == std::string::npos && sceneFileStr.find('\\') == std::string::npos)
+    {
+        sceneFileStr = "data/scenes/" + sceneFileStr;
+    }
+    const char * sceneFile = sceneFileStr.c_str();
 
     // SDL initialization.
     if (!SDL_Init(SDL_INIT_VIDEO))
@@ -391,7 +562,8 @@ int main(int argc, char * argv[])
     GLint uProj = glGetUniformLocation(mainProg, "uProj");
     GLint uUseTexture = glGetUniformLocation(mainProg, "uUseTexture");
     GLint uDiffuseTexture = glGetUniformLocation(mainProg, "uDiffuseTexture");
-    GLint uCameraPos = glGetUniformLocation(mainProg, "uCameraPos");
+    GLint uUseNormalMap = glGetUniformLocation(mainProg, "uUseNormalMap");
+    GLint uNormalTexture = glGetUniformLocation(mainProg, "uNormalTexture");
     GLint uShininess = glGetUniformLocation(mainProg, "uShininess");
     GLint uAmbientBoost = glGetUniformLocation(mainProg, "uAmbientBoost");
     GLint uLightNum = glGetUniformLocation(mainProg, "uLightNum");
@@ -416,6 +588,8 @@ int main(int argc, char * argv[])
     // Fallback and white textures.
     GLuint fallbackTex = CreateFallbackTexture();
     GLuint whiteTex = CreateWhiteTexture();
+    GLuint defaultNormalTex = CreateDefaultNormalTexture();
+    std::unordered_map<std::string, GLuint> textureCache;
 
     // Small sphere to mark light positions.
     Mesh lightMarkerMesh = Mesh::MakeSphere(16, 8);
@@ -440,6 +614,11 @@ int main(int argc, char * argv[])
         obj.rot = so.rot;
         obj.sca = so.sca;
         obj.material.shininess = so.ns;
+        obj.material.diffuseTexturePath = so.diffuseTexture;
+        obj.material.normalTexturePath = so.normalTexture;
+        obj.material.diffuseTexture = fallbackTex;
+        obj.material.normalTexture = defaultNormalTex;
+        obj.material.hasNormalMap = false;
 
         const std::string & ms = so.mesh;
         if (ms == "PLANE") obj.kind = MeshKind::PLANE;
@@ -453,11 +632,57 @@ int main(int argc, char * argv[])
         obj.mesh.Upload(faceNormals);
         obj.anims = so.anims;
         obj.currPos = obj.pos; // start animated position at original
+
+        if (!obj.material.diffuseTexturePath.empty())
+        {
+            const std::string diffusePath = ResolveTexturePath(obj.material.diffuseTexturePath);
+            auto it = textureCache.find(diffusePath);
+            if (it == textureCache.end())
+            {
+                GLuint tex = LoadTexture2D(diffusePath);
+                if (tex != 0)
+                {
+                    textureCache[diffusePath] = tex;
+                    obj.material.diffuseTexture = tex;
+                }
+            }
+            else
+            {
+                obj.material.diffuseTexture = it->second;
+            }
+        }
+
+        if (!obj.material.normalTexturePath.empty())
+        {
+            const std::string normalPath = ResolveTexturePath(obj.material.normalTexturePath);
+            auto it = textureCache.find(normalPath);
+            if (it == textureCache.end())
+            {
+                GLuint tex = LoadTexture2D(normalPath);
+                if (tex != 0)
+                {
+                    textureCache[normalPath] = tex;
+                    obj.material.normalTexture = tex;
+                    obj.material.hasNormalMap = true;
+                }
+            }
+            else
+            {
+                obj.material.normalTexture = it->second;
+                obj.material.hasNormalMap = true;
+            }
+        }
+
         objects.push_back(std::move(obj));
     }
 
     // Enables depth testing.
     glEnable(GL_DEPTH_TEST);
+
+    // Culls back faces so the wall nearest to the camera is not drawn,
+    // allowing the camera to see the inside of the cube room.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 
     // Previous tick for delta time.
     Uint64 prevTick = SDL_GetTicks();
@@ -584,7 +809,7 @@ int main(int argc, char * argv[])
         // View and projection matrices.
         glm::mat4 V = camera.GetView();
         glm::mat4 P = camera.GetProjection();
-        glm::vec3 camPos = camera.GetPosition();
+        glm::mat3 viewRotation = glm::mat3(V);
 
         // Clears the screen and sets polygon mode.
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -595,7 +820,6 @@ int main(int argc, char * argv[])
         glUseProgram(mainProg);
         glUniformMatrix4fv(uView, 1, GL_FALSE, glm::value_ptr(V));
         glUniformMatrix4fv(uProj, 1, GL_FALSE, glm::value_ptr(P));
-        glUniform3fv(uCameraPos, 1, glm::value_ptr(camPos));
 
         const int activeLightCount = std::min<int>(static_cast<int>(scene.lights.size()), kMaxLights);
         glUniform1i(uLightNum, activeLightCount);
@@ -613,9 +837,13 @@ int main(int argc, char * argv[])
             {
                 lightDir = glm::normalize(lightDir);
             }
+
+            const glm::vec3 viewLightPos = glm::vec3(V * glm::vec4(lightCurrPos[static_cast<size_t>(i)], 1.0f));
+            const glm::vec3 viewLightDir = glm::normalize(viewRotation * lightDir);
+
             glUniform1i(lightUniforms[i].type, ToShaderLightType(light.type));
-            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(lightCurrPos[static_cast<size_t>(i)]));
-            glUniform3fv(lightUniforms[i].direction, 1, glm::value_ptr(lightDir));
+            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(viewLightPos));
+            glUniform3fv(lightUniforms[i].direction, 1, glm::value_ptr(viewLightDir));
             glUniform3fv(lightUniforms[i].color, 1, glm::value_ptr(light.color));
             glUniform1f(lightUniforms[i].ambient, light.ambient);
             glUniform3fv(lightUniforms[i].attenuation, 1, glm::value_ptr(light.attenuation));
@@ -627,6 +855,9 @@ int main(int argc, char * argv[])
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fallbackTex);
         glUniform1i(uDiffuseTexture, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, defaultNormalTex);
+        glUniform1i(uNormalTexture, 1);
 
         for (const auto & obj : objects)
         {
@@ -638,6 +869,11 @@ int main(int argc, char * argv[])
             glm::mat4 M = obj.ModelMatrix();
             glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(M));
             glUniform1i(uUseTexture, textureMode ? 1 : 0);
+            glUniform1i(uUseNormalMap, obj.material.hasNormalMap ? 1 : 0);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTexture);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, obj.material.normalTexture);
             glUniform1f(uShininess, obj.material.shininess);
             obj.mesh.Draw();
         }
@@ -667,18 +903,21 @@ int main(int argc, char * argv[])
             glUseProgram(mainProg);
             glUniformMatrix4fv(uView, 1, GL_FALSE, glm::value_ptr(V));
             glUniformMatrix4fv(uProj, 1, GL_FALSE, glm::value_ptr(P));
-            glUniform3fv(uCameraPos, 1, glm::value_ptr(camPos));
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, whiteTex);
             glUniform1i(uDiffuseTexture, 0);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, defaultNormalTex);
+            glUniform1i(uNormalTexture, 1);
             glUniform1i(uUseTexture, 1);
+            glUniform1i(uUseNormalMap, 0);
             glUniform1f(uShininess, 64.0f);
 
             // Bright point at camera so markers are always visible.
             glUniform1i(uLightNum, 1);
             glUniform1f(uAmbientBoost, 1.0f);
             glUniform1i(lightUniforms[0].type, 0);
-            glUniform3fv(lightUniforms[0].position, 1, glm::value_ptr(camPos));
+            glUniform3fv(lightUniforms[0].position, 1, glm::value_ptr(glm::vec3(0.0f)));
             glUniform3fv(lightUniforms[0].direction, 1, glm::value_ptr(glm::vec3(0.0f, -1.0f, 0.0f)));
             glUniform3fv(lightUniforms[0].color, 1, glm::value_ptr(glm::vec3(1.0f)));
             glUniform1f(lightUniforms[0].ambient, 1.0f);
@@ -713,6 +952,14 @@ int main(int argc, char * argv[])
     }
     glDeleteTextures(1, &fallbackTex);
     glDeleteTextures(1, &whiteTex);
+    glDeleteTextures(1, &defaultNormalTex);
+    for (const auto& [_, tex] : textureCache)
+    {
+        if (tex != 0 && tex != fallbackTex && tex != whiteTex && tex != defaultNormalTex)
+        {
+            glDeleteTextures(1, &tex);
+        }
+    }
     lightMarkerMesh.Free();
 
     SDL_GL_DestroyContext(glCtx);

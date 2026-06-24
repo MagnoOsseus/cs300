@@ -34,6 +34,8 @@ class CS300Parser
         std::string name;
 
         std::string mesh;
+        std::string diffuseTexture;
+        std::string normalTexture;
 
         glm::vec3 pos;
         glm::vec3 rot;
