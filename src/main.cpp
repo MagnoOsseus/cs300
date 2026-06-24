@@ -679,6 +679,11 @@ int main(int argc, char * argv[])
     // Enables depth testing.
     glEnable(GL_DEPTH_TEST);
 
+    // Culls back faces so the wall nearest to the camera is not drawn,
+    // allowing the camera to see the inside of the cube room.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+
     // Previous tick for delta time.
     Uint64 prevTick = SDL_GetTicks();
 
