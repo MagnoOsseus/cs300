@@ -22,6 +22,7 @@
 #include "animations.h"
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -462,8 +463,14 @@ void main()
 // Entry point: initializes, loads scene, renders, and cleans up.
 int main(int argc, char * argv[])
 {
-    // Scene file from argv, defaults to scene_A1.txt.
-    const char * sceneFile = (argc > 1) ? argv[1] : "scene_A1.txt";
+    // Scene file from argv, defaults to scene_A2.txt.
+    std::string sceneFileStr = (argc > 1) ? argv[1] : "data/scenes/scene_A2.txt";
+    // If no path separator, assume it's in data/scenes/
+    if (argc > 1 && sceneFileStr.find('/') == std::string::npos && sceneFileStr.find('\\') == std::string::npos)
+    {
+        sceneFileStr = "data/scenes/" + sceneFileStr;
+    }
+    const char * sceneFile = sceneFileStr.c_str();
 
     // SDL initialization.
     if (!SDL_Init(SDL_INIT_VIDEO))
