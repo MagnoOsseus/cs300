@@ -94,8 +94,8 @@ static void ComputeTriangleTangentBitangent(const glm::vec3& p0,
 
     const glm::vec3 n = SafeNormalize(glm::cross(v1, v2), glm::vec3(0.0f, 1.0f, 0.0f));
     const glm::vec3 up = (std::abs(n.y) > 0.999f) ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
-    tangent = glm::cross(up, n);
-    bitangent = glm::cross(n, tangent);
+    tangent = SafeNormalize(glm::cross(up, n), glm::vec3(1.0f, 0.0f, 0.0f));
+    bitangent = SafeNormalize(glm::cross(n, tangent), glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
 // Builds a non-indexed-like vertex buffer with one normal per triangle.
@@ -235,6 +235,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
         glm::vec3 t = tangentSums[i] - n * glm::dot(n, tangentSums[i]);
         t = SafeNormalize(t, glm::vec3(1.0f, 0.0f, 0.0f));
         glm::vec3 b = bitangentSums[i] - n * glm::dot(n, bitangentSums[i]);
+        b -= t * glm::dot(t, b);
         b = SafeNormalize(b, glm::cross(n, t));
         verts[i].tangent = t;
         verts[i].bitangent = b;

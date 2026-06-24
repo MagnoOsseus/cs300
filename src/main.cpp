@@ -245,6 +245,7 @@ static GLuint CreateDefaultNormalTexture()
 static std::string ResolveTexturePath(const std::string& path)
 {
     namespace fs = std::filesystem;
+    static constexpr const char* kSceneTexturePrefix = "data/textures/";
     if (path.empty())
     {
         return std::string();
@@ -253,9 +254,9 @@ static std::string ResolveTexturePath(const std::string& path)
     {
         return path;
     }
-    if (path.rfind("data/textures/", 0) == 0)
+    if (path.rfind(kSceneTexturePrefix, 0) == 0)
     {
-        fs::path remap = fs::path("data/normal_maps/textures") / path.substr(std::string("data/textures/").size());
+        fs::path remap = fs::path("data/normal_maps/textures") / path.substr(std::string(kSceneTexturePrefix).size());
         if (fs::exists(remap))
         {
             return remap.string();
@@ -274,7 +275,7 @@ static bool WicLoadRGBA(const std::string& path, std::vector<unsigned char>& pix
     {
         return false;
     }
-    std::vector<wchar_t> widePath(static_cast<size_t>(utf16Len), L'\0');
+    std::vector<wchar_t> widePath(static_cast<size_t>(utf16Len));
     if (MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, widePath.data(), utf16Len) <= 0)
     {
         return false;
@@ -357,7 +358,7 @@ static GLuint LoadTexture2D(const std::string& sourcePath)
         return 0;
     }
 #else
-    std::cerr << "Texture loading is only implemented for Windows in this build.\n";
+    std::cerr << "Texture loading is only implemented for Windows in this build: " << path << '\n';
     return 0;
 #endif
 
