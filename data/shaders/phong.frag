@@ -93,11 +93,11 @@ void main()
     }
 
     vec3 NBase = normalize(vViewNormal);
-    vec3 T = normalize(vViewTangent - dot(vViewTangent, NBase) * NBase);
-    vec3 B = normalize(vViewBitangent - dot(vViewBitangent, NBase) * NBase);
+    vec3 T = normalize(vViewTangent);
+    vec3 B = normalize(vViewBitangent);
     mat3 TBN = mat3(T, B, NBase);
     vec3 mapNormal = texture(uNormalTexture, vUV).rgb * 2.0 - 1.0;
-    vec3 N = uUseNormalMap ? normalize(TBN * normalize(mapNormal)) : NBase;
+    vec3 N = uUseNormalMap ? normalize(TBN * mapNormal) : NBase;
     vec3 V = normalize(-vViewPos);
     vec3 finalColor = vec3(0.0);
 

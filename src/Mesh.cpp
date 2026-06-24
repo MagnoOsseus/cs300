@@ -231,8 +231,13 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
 
     for (size_t i = 0; i < verts.size(); ++i)
     {
-        verts[i].tangent = SafeNormalize(tangentSums[i], glm::vec3(1.0f, 0.0f, 0.0f));
-        verts[i].bitangent = SafeNormalize(bitangentSums[i], glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::vec3 n = SafeNormalize(verts[i].normal, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::vec3 t = tangentSums[i] - n * glm::dot(n, tangentSums[i]);
+        t = SafeNormalize(t, glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec3 b = bitangentSums[i] - n * glm::dot(n, bitangentSums[i]);
+        b = SafeNormalize(b, glm::cross(n, t));
+        verts[i].tangent = t;
+        verts[i].bitangent = b;
     }
 }
 

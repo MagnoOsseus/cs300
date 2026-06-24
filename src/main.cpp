@@ -21,8 +21,13 @@
 #include "ShaderManager.h"
 #include "animations.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#ifdef _WIN32
+#include <windows.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "windowscodecs.lib")
+#endif
 
 // Window size.
 static const GLsizei WIN_W = 1280;
@@ -250,7 +255,7 @@ static std::string ResolveTexturePath(const std::string& path)
     }
     if (path.rfind("data/textures/", 0) == 0)
     {
-        fs::path remap = fs::path("data/normal_maps") / path.substr(std::string("data/").size());
+        fs::path remap = fs::path("data/normal_maps/textures") / path.substr(std::string("data/textures/").size());
         if (fs::exists(remap))
         {
             return remap.string();
@@ -259,26 +264,102 @@ static std::string ResolveTexturePath(const std::string& path)
     return path;
 }
 
+#ifdef _WIN32
+static bool WicLoadRGBA(const std::string& path, std::vector<unsigned char>& pixels, int& width, int& height)
+{
+    using Microsoft::WRL::ComPtr;
+
+    const int utf16Len = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
+    if (utf16Len <= 0)
+    {
+        return false;
+    }
+    std::vector<wchar_t> widePath(static_cast<size_t>(utf16Len), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, widePath.data(), utf16Len) <= 0)
+    {
+        return false;
+    }
+
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory,
+                                nullptr,
+                                CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&factory))))
+    {
+        return false;
+    }
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(factory->CreateDecoderFromFilename(widePath.data(),
+                                                  nullptr,
+                                                  GENERIC_READ,
+                                                  WICDecodeMetadataCacheOnLoad,
+                                                  &decoder)))
+    {
+        return false;
+    }
+
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if (FAILED(decoder->GetFrame(0, &frame)))
+    {
+        return false;
+    }
+
+    ComPtr<IWICFormatConverter> converter;
+    if (FAILED(factory->CreateFormatConverter(&converter)))
+    {
+        return false;
+    }
+    if (FAILED(converter->Initialize(frame.Get(),
+                                     GUID_WICPixelFormat32bppRGBA,
+                                     WICBitmapDitherTypeNone,
+                                     nullptr,
+                                     0.0,
+                                     WICBitmapPaletteTypeCustom)))
+    {
+        return false;
+    }
+
+    UINT w = 0;
+    UINT h = 0;
+    if (FAILED(converter->GetSize(&w, &h)) || w == 0 || h == 0)
+    {
+        return false;
+    }
+
+    width = static_cast<int>(w);
+    height = static_cast<int>(h);
+    pixels.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 4u);
+    const UINT stride = w * 4u;
+    const UINT byteSize = stride * h;
+    return SUCCEEDED(converter->CopyPixels(nullptr, stride, byteSize, pixels.data()));
+}
+#endif
+
 // Loads an image file into an OpenGL texture.
 static GLuint LoadTexture2D(const std::string& sourcePath)
 {
     const std::string path = ResolveTexturePath(sourcePath);
     int width = 0;
     int height = 0;
-    int channels = 0;
-    stbi_uc* pixels = stbi_load(path.c_str(), &width, &height, &channels, 0);
-    if (!pixels || width <= 0 || height <= 0 || (channels != 3 && channels != 4))
+    std::vector<unsigned char> pixels;
+
+#ifdef _WIN32
+    static bool comInitialized = false;
+    if (!comInitialized)
     {
-        if (pixels)
-        {
-            stbi_image_free(pixels);
-        }
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        comInitialized = SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+    }
+    if (!comInitialized || !WicLoadRGBA(path, pixels, width, height))
+    {
         std::cerr << "Failed to load texture: " << path << '\n';
         return 0;
     }
-
-    const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-    const GLenum internalFormat = (channels == 4) ? GL_RGBA8 : GL_RGB8;
+#else
+    std::cerr << "Texture loading is only implemented for Windows in this build.\n";
+    return 0;
+#endif
 
     GLuint tex = 0;
     glGenTextures(1, &tex);
@@ -287,10 +368,9 @@ static GLuint LoadTexture2D(const std::string& sourcePath)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
-    stbi_image_free(pixels);
     return tex;
 }
 
