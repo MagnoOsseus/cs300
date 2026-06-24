@@ -1,0 +1,53 @@
+
+#camera data
+fovy 60.0
+width 1280.0
+height 720.0
+near 1
+far 500
+camPosition 0 0 110
+camTarget 0 0 50
+camUp 0 1 0
+
+#scene data — Assignment 2: Normal Mapping demo
+
+# Plane with normal map (diffuse + normal texture)
+object plane_nm
+translate -20 0 50
+rotation 0 0 0
+scale 20 20 20
+mesh PLANE
+diffuseTexture data/textures/diffuse/stone_diffuse.png
+normalTexture  data/textures/normal/stone_normal.png
+
+# Sphere with normal map
+object sphere_nm
+translate 20 0 50
+rotation 0 0 0
+scale 15 15 15
+shininess 64
+mesh SPHERE
+diffuseTexture data/textures/diffuse/stone_diffuse.png
+normalTexture  data/textures/normal/stone_normal.png
+
+# Cube without normal map (fallback to Assignment 1 behavior)
+object cube_plain
+translate 0 -15 50
+rotation 0 0 0
+scale 10 10 10
+shininess 32
+mesh CUBE
+
+#light data
+light
+translate 0 30 70
+color 1 1 1
+lightType POINT
+attenuation 0 0.0 0.005
+ambient 0.1
+
+light
+translate -50 10 60
+color 0.8 0.8 1.0
+lightType DIR
+direction 1 -0.5 -0.5

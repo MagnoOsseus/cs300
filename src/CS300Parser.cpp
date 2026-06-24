@@ -166,6 +166,24 @@ void CS300Parser::LoadDataFromFile(const char * filename)
                 objects.back().ns = ns;
             }
         }
+        else if (id == "diffuseTexture")
+        {
+            std::string texPath;
+            inFile >> texPath;
+            if (objects.size() > 0)
+            {
+                objects.back().diffuseTexture = texPath;
+            }
+        }
+        else if (id == "normalTexture")
+        {
+            std::string texPath;
+            inFile >> texPath;
+            if (objects.size() > 0)
+            {
+                objects.back().normalTexture = texPath;
+            }
+        }
         else if (id == "light")
         {
             if (lights.size() < 8)

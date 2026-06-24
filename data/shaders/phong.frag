@@ -9,8 +9,8 @@ const float MIN_EPSILON = 1e-6;
 struct Light
 {
     int type;
-    vec3 position;
-    vec3 direction;
+    vec3 position;   // camera/view space
+    vec3 direction;  // camera/view space, normalized
     vec3 color;
     float ambient;
     vec3 attenuation;
@@ -19,13 +19,16 @@ struct Light
     float falloff;
 };
 
-in vec3 vWorldPos;
-in vec3 vWorldNormal;
+in vec3 vViewPos;
+in vec3 vViewNormal;
+in vec3 vViewTangent;
+in vec3 vViewBitangent;
 in vec2 vUV;
 
 uniform bool uUseTexture;
 uniform sampler2D uDiffuseTexture;
-uniform vec3 uCameraPos;
+uniform sampler2D uNormalMap;
+uniform bool uHasNormalMap;
 uniform float uShininess;
 uniform float uAmbientBoost;
 uniform int uLightNum;
@@ -38,6 +41,7 @@ vec3 UVColor(vec2 uv)
     return vec3(clamp(uv.x, 0.0, 1.0), clamp(uv.y, 0.0, 1.0), 0.0);
 }
 
+// Spot cone attenuation factor.
 float ComputeSpotFactor(Light light, vec3 lightToFragment)
 {
     if (light.type != LIGHT_TYPE_SPOT)
@@ -65,6 +69,7 @@ float ComputeSpotFactor(Light light, vec3 lightToFragment)
     return clamp(pow(clamp(t, 0.0, 1.0), light.falloff), 0.0, 1.0);
 }
 
+// Distance attenuation factor.
 float ComputeAttenuation(Light light, float distanceToLight)
 {
     if (light.type == LIGHT_TYPE_DIRECTIONAL)
@@ -89,14 +94,34 @@ void main()
         return;
     }
 
-    vec3 N = normalize(vWorldNormal);
-    vec3 V = normalize(uCameraPos - vWorldPos);
+    // Resolve surface normal in camera space.
+    vec3 N;
+    if (uHasNormalMap)
+    {
+        // Build TBN matrix in camera space and transform sampled normal.
+        vec3 T = normalize(vViewTangent);
+        vec3 B = normalize(vViewBitangent);
+        vec3 Nv = normalize(vViewNormal);
+        mat3 TBN = mat3(T, B, Nv);
+
+        // Sample normal map and remap from [0,1] to [-1,1].
+        vec3 sampledN = texture(uNormalMap, vUV).rgb * 2.0 - 1.0;
+        N = normalize(TBN * sampledN);
+    }
+    else
+    {
+        N = normalize(vViewNormal);
+    }
+
+    // In camera space the eye is at the origin.
+    vec3 V = normalize(-vViewPos);
     vec3 finalColor = vec3(0.0);
 
     for (int i = 0; i < uLightNum; ++i)
     {
         Light light = uLight[i];
 
+        // Compute light vector and distance in camera space.
         vec3 L = vec3(0.0);
         float distanceToLight = 0.0;
 
@@ -106,7 +131,7 @@ void main()
         }
         else
         {
-            vec3 toLight = light.position - vWorldPos;
+            vec3 toLight = light.position - vViewPos;
             distanceToLight = length(toLight);
             if (distanceToLight > 0.0)
             {
@@ -128,7 +153,8 @@ void main()
         }
 
         float attenuation = ComputeAttenuation(light, distanceToLight);
-        vec3 lightToFragment = normalize(vWorldPos - light.position);
+        // lightToFragment in camera space for spot cone test.
+        vec3 lightToFragment = normalize(vViewPos - light.position);
         float spotFactor = ComputeSpotFactor(light, lightToFragment);
 
         float lightScale = (light.type == LIGHT_TYPE_SPOT) ? spotFactor : 1.0;
