@@ -13,10 +13,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// stb_image for texture loading (header-only).
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #include "OGLDebug.h"
 #include "Camera.h"
 #include "CS300Parser.h"
@@ -39,8 +35,6 @@ enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
 struct Material
 {
     float shininess = 10.0f;
-    std::string diffuseTexture; // path to diffuse texture (empty = use fallback)
-    std::string normalTexture;  // path to normal map (empty = no normal map)
 };
 
 // Scene object with transform and mesh.
@@ -56,9 +50,6 @@ struct SceneObject
     glm::vec3    rot{ 0.0f };
     glm::vec3    sca{ 1.0f };
     Material     material;
-
-    GLuint       diffuseTex = 0;  // GPU diffuse texture (0 = use fallback)
-    GLuint       normalTex  = 0;  // GPU normal map texture (0 = flat fallback)
 
     std::vector<Animations::Anim> anims; // animations attached to this object
 
@@ -104,52 +95,6 @@ static Mesh BuildMesh(MeshKind kind, const std::string & objPath, int slices)
     case MeshKind::OBJ:      return Mesh::LoadOBJ(objPath);
     }
     return Mesh::MakePlane();
-}
-
-// Loads a texture from a file; returns 0 on failure.
-static GLuint LoadTextureFromFile(const std::string& path)
-{
-    int w, h, channels;
-    stbi_set_flip_vertically_on_load(1);
-    unsigned char* data = stbi_load(path.c_str(), &w, &h, &channels, 0);
-    if (!data)
-    {
-        std::cerr << "LoadTextureFromFile: cannot load '" << path << "'\n";
-        return 0;
-    }
-
-    GLenum internalFmt = (channels == 4) ? GL_RGBA8 : GL_RGB8;
-    GLenum fmt         = (channels == 4) ? GL_RGBA   : GL_RGB;
-
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexImage2D(GL_TEXTURE_2D, 0, internalFmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    stbi_image_free(data);
-    return tex;
-}
-
-// Creates a 1x1 flat normal map: (0,0,1) encoded as (127,127,255).
-static GLuint CreateFlatNormalMap()
-{
-    const unsigned char flat[3] = { 127, 127, 255 };
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, flat);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    return tex;
 }
 
 // Creates base OBJ files if missing in data/meshes.
@@ -446,8 +391,7 @@ int main(int argc, char * argv[])
     GLint uProj = glGetUniformLocation(mainProg, "uProj");
     GLint uUseTexture = glGetUniformLocation(mainProg, "uUseTexture");
     GLint uDiffuseTexture = glGetUniformLocation(mainProg, "uDiffuseTexture");
-    GLint uNormalMap = glGetUniformLocation(mainProg, "uNormalMap");
-    GLint uHasNormalMap = glGetUniformLocation(mainProg, "uHasNormalMap");
+    GLint uCameraPos = glGetUniformLocation(mainProg, "uCameraPos");
     GLint uShininess = glGetUniformLocation(mainProg, "uShininess");
     GLint uAmbientBoost = glGetUniformLocation(mainProg, "uAmbientBoost");
     GLint uLightNum = glGetUniformLocation(mainProg, "uLightNum");
@@ -472,8 +416,6 @@ int main(int argc, char * argv[])
     // Fallback and white textures.
     GLuint fallbackTex = CreateFallbackTexture();
     GLuint whiteTex = CreateWhiteTexture();
-    // Flat normal map used for objects without a normal map texture.
-    GLuint flatNormalMap = CreateFlatNormalMap();
 
     // Small sphere to mark light positions.
     Mesh lightMarkerMesh = Mesh::MakeSphere(16, 8);
@@ -511,17 +453,6 @@ int main(int argc, char * argv[])
         obj.mesh.Upload(faceNormals);
         obj.anims = so.anims;
         obj.currPos = obj.pos; // start animated position at original
-
-        // Load per-object textures (optional).
-        if (!so.diffuseTexture.empty())
-        {
-            obj.diffuseTex = LoadTextureFromFile(so.diffuseTexture);
-        }
-        if (!so.normalTexture.empty())
-        {
-            obj.normalTex = LoadTextureFromFile(so.normalTexture);
-        }
-
         objects.push_back(std::move(obj));
     }
 
@@ -653,6 +584,7 @@ int main(int argc, char * argv[])
         // View and projection matrices.
         glm::mat4 V = camera.GetView();
         glm::mat4 P = camera.GetProjection();
+        glm::vec3 camPos = camera.GetPosition();
 
         // Clears the screen and sets polygon mode.
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -663,13 +595,12 @@ int main(int argc, char * argv[])
         glUseProgram(mainProg);
         glUniformMatrix4fv(uView, 1, GL_FALSE, glm::value_ptr(V));
         glUniformMatrix4fv(uProj, 1, GL_FALSE, glm::value_ptr(P));
+        glUniform3fv(uCameraPos, 1, glm::value_ptr(camPos));
 
         const int activeLightCount = std::min<int>(static_cast<int>(scene.lights.size()), kMaxLights);
         glUniform1i(uLightNum, activeLightCount);
         glUniform1f(uAmbientBoost, kAmbientBoost);
 
-        // Upload lights transformed to camera/view space.
-        glm::mat3 V3(V);
         for (int i = 0; i < activeLightCount; ++i)
         {
             const auto & light = scene.lights[static_cast<size_t>(i)];
@@ -682,14 +613,9 @@ int main(int argc, char * argv[])
             {
                 lightDir = glm::normalize(lightDir);
             }
-
-            // Transform position and direction to camera space.
-            glm::vec3 lightPosView = glm::vec3(V * glm::vec4(lightCurrPos[static_cast<size_t>(i)], 1.0f));
-            glm::vec3 lightDirView = glm::normalize(V3 * lightDir);
-
             glUniform1i(lightUniforms[i].type, ToShaderLightType(light.type));
-            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(lightPosView));
-            glUniform3fv(lightUniforms[i].direction, 1, glm::value_ptr(lightDirView));
+            glUniform3fv(lightUniforms[i].position, 1, glm::value_ptr(lightCurrPos[static_cast<size_t>(i)]));
+            glUniform3fv(lightUniforms[i].direction, 1, glm::value_ptr(lightDir));
             glUniform3fv(lightUniforms[i].color, 1, glm::value_ptr(light.color));
             glUniform1f(lightUniforms[i].ambient, light.ambient);
             glUniform3fv(lightUniforms[i].attenuation, 1, glm::value_ptr(light.attenuation));
@@ -698,9 +624,9 @@ int main(int argc, char * argv[])
             glUniform1f(lightUniforms[i].falloff, light.falloff);
         }
 
-        // Set texture sampler units.
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, fallbackTex);
         glUniform1i(uDiffuseTexture, 0);
-        glUniform1i(uNormalMap, 1);
 
         for (const auto & obj : objects)
         {
@@ -713,27 +639,6 @@ int main(int argc, char * argv[])
             glUniformMatrix4fv(uModel, 1, GL_FALSE, glm::value_ptr(M));
             glUniform1i(uUseTexture, textureMode ? 1 : 0);
             glUniform1f(uShininess, obj.material.shininess);
-
-            // Bind diffuse texture (object-specific or global fallback).
-            glActiveTexture(GL_TEXTURE0);
-            if (textureMode && obj.diffuseTex != 0)
-                glBindTexture(GL_TEXTURE_2D, obj.diffuseTex);
-            else
-                glBindTexture(GL_TEXTURE_2D, fallbackTex);
-
-            // Bind normal map (object-specific or flat fallback).
-            glActiveTexture(GL_TEXTURE1);
-            if (obj.normalTex != 0)
-            {
-                glBindTexture(GL_TEXTURE_2D, obj.normalTex);
-                glUniform1i(uHasNormalMap, 1);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, flatNormalMap);
-                glUniform1i(uHasNormalMap, 0);
-            }
-
             obj.mesh.Draw();
         }
 
@@ -762,21 +667,18 @@ int main(int argc, char * argv[])
             glUseProgram(mainProg);
             glUniformMatrix4fv(uView, 1, GL_FALSE, glm::value_ptr(V));
             glUniformMatrix4fv(uProj, 1, GL_FALSE, glm::value_ptr(P));
+            glUniform3fv(uCameraPos, 1, glm::value_ptr(camPos));
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, whiteTex);
             glUniform1i(uDiffuseTexture, 0);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, flatNormalMap);
-            glUniform1i(uNormalMap, 1);
-            glUniform1i(uHasNormalMap, 0);
             glUniform1i(uUseTexture, 1);
             glUniform1f(uShininess, 64.0f);
 
-            // Bright point at camera origin in view space so markers are always visible.
+            // Bright point at camera so markers are always visible.
             glUniform1i(uLightNum, 1);
             glUniform1f(uAmbientBoost, 1.0f);
             glUniform1i(lightUniforms[0].type, 0);
-            glUniform3fv(lightUniforms[0].position, 1, glm::value_ptr(glm::vec3(0.0f)));
+            glUniform3fv(lightUniforms[0].position, 1, glm::value_ptr(camPos));
             glUniform3fv(lightUniforms[0].direction, 1, glm::value_ptr(glm::vec3(0.0f, -1.0f, 0.0f)));
             glUniform3fv(lightUniforms[0].color, 1, glm::value_ptr(glm::vec3(1.0f)));
             glUniform1f(lightUniforms[0].ambient, 1.0f);
@@ -808,12 +710,9 @@ int main(int argc, char * argv[])
     for (auto & o : objects)
     {
         o.mesh.Free();
-        if (o.diffuseTex != 0) glDeleteTextures(1, &o.diffuseTex);
-        if (o.normalTex  != 0) glDeleteTextures(1, &o.normalTex);
     }
     glDeleteTextures(1, &fallbackTex);
     glDeleteTextures(1, &whiteTex);
-    glDeleteTextures(1, &flatNormalMap);
     lightMarkerMesh.Free();
 
     SDL_GL_DestroyContext(glCtx);

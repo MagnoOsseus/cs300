@@ -77,29 +77,15 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
         glm::vec3 e2 = tri.v[2].pos - tri.v[0].pos;
         glm::vec3 n  = glm::normalize(glm::cross(e1, e2));
 
-        // Tangent and bitangent from UV differences (lecture derivation).
-        glm::vec2 dUV1 = tri.v[1].uv - tri.v[0].uv;
-        glm::vec2 dUV2 = tri.v[2].uv - tri.v[0].uv;
-        float det = dUV1.x * dUV2.y - dUV1.y * dUV2.x;
-        glm::vec3 T(0.0f), B(0.0f);
-        if (std::abs(det) > 1e-8f)
-        {
-            float r = 1.0f / det;
-            T = glm::normalize((e1 * dUV2.y - e2 * dUV1.y) * r);
-            B = glm::normalize((e2 * dUV1.x - e1 * dUV2.x) * r);
-        }
-
         // Start index for this triangle's vertices.
         auto base = static_cast<unsigned int>(verts.size());
         for (int i = 0; i < 3; ++i)
         {
             Vertex vert;
-            vert.position  = tri.v[i].pos;
+            vert.position = tri.v[i].pos;
             // All three vertices use the same face normal.
-            vert.normal    = n;
-            vert.uv        = tri.v[i].uv;
-            vert.tangent   = T;
-            vert.bitangent = B;
+            vert.normal   = n;
+            vert.uv       = tri.v[i].uv;
             verts.push_back(vert);
             idx.push_back(base + i);
         }
@@ -113,75 +99,44 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
     verts.clear();
     idx.clear();
 
-    // Per-triangle geometry data.
-    struct TriData { glm::vec3 normal; glm::vec3 tangent; glm::vec3 bitangent; };
-    std::vector<TriData> triData(tris_.size());
-
+    // Compute one normal for each source triangle.
+    std::vector<glm::vec3> faceN(tris_.size());
     for (size_t fi = 0; fi < tris_.size(); ++fi)
     {
         glm::vec3 e1 = tris_[fi].v[1].pos - tris_[fi].v[0].pos;
         glm::vec3 e2 = tris_[fi].v[2].pos - tris_[fi].v[0].pos;
-        triData[fi].normal = glm::normalize(glm::cross(e1, e2));
-
-        // Tangent and bitangent from UV (lecture derivation, accumulate before normalize).
-        glm::vec2 dUV1 = tris_[fi].v[1].uv - tris_[fi].v[0].uv;
-        glm::vec2 dUV2 = tris_[fi].v[2].uv - tris_[fi].v[0].uv;
-        float det = dUV1.x * dUV2.y - dUV1.y * dUV2.x;
-        if (std::abs(det) > 1e-8f)
-        {
-            float r = 1.0f / det;
-            triData[fi].tangent   = (e1 * dUV2.y - e2 * dUV1.y) * r;
-            triData[fi].bitangent = (e2 * dUV1.x - e1 * dUV2.x) * r;
-        }
+        faceN[fi]    = glm::normalize(glm::cross(e1, e2));
     }
 
-    // Accumulate normals, tangents and bitangents per position (unweighted sum).
-    using VecList = std::vector<glm::vec3>;
-    std::unordered_map<glm::vec3, VecList, Vec3Hash, Vec3Equal> posToNormals;
-    std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToTangent;
-    std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToBitangent;
+    // Group unique face normals by vertex position.
+    using NormalList = std::vector<glm::vec3>;
+    std::unordered_map<glm::vec3, NormalList, Vec3Hash, Vec3Equal> posToNormals;
 
     for (size_t fi = 0; fi < tris_.size(); ++fi)
     {
-        const glm::vec3& fn = triData[fi].normal;
         for (int vi = 0; vi < 3; ++vi)
         {
             const glm::vec3& pos = tris_[fi].v[vi].pos;
-            VecList& list        = posToNormals[pos];
+            NormalList& list     = posToNormals[pos];
+            const glm::vec3& fn  = faceN[fi];
 
             bool dup = false;
             for (const auto& existing : list)
             {
+                // Skip near-duplicate normals.
                 if (glm::length(existing - fn) < 1e-5f) { dup = true; break; }
             }
             if (!dup) list.push_back(fn);
-
-            // Accumulate tangent and bitangent (do not normalize before averaging).
-            posToTangent[pos]    += triData[fi].tangent;
-            posToBitangent[pos]  += triData[fi].bitangent;
         }
     }
 
-    // Normalize averaged normals, tangents and bitangents per position.
+    // Average collected normals for each position.
     std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToAvgN;
-    std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToAvgT;
-    std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToAvgB;
-
     for (const auto& [pos, normals] : posToNormals)
     {
         glm::vec3 sum(0.0f);
         for (const auto& n : normals) sum += n;
         posToAvgN[pos] = glm::normalize(sum);
-    }
-    for (const auto& [pos, t] : posToTangent)
-    {
-        float len = glm::length(t);
-        posToAvgT[pos] = (len > 1e-8f) ? t / len : glm::vec3(1.0f, 0.0f, 0.0f);
-    }
-    for (const auto& [pos, b] : posToBitangent)
-    {
-        float len = glm::length(b);
-        posToAvgB[pos] = (len > 1e-8f) ? b / len : glm::vec3(0.0f, 1.0f, 0.0f);
     }
 
     // Build final index buffer using unique (position, uv) pairs.
@@ -201,11 +156,9 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
                 auto newIdx = static_cast<unsigned int>(verts.size());
                 vertMap[key] = newIdx;
                 Vertex vert;
-                vert.position  = tri.v[vi].pos;
-                vert.normal    = posToAvgN.at(tri.v[vi].pos);
-                vert.uv        = tri.v[vi].uv;
-                vert.tangent   = posToAvgT.at(tri.v[vi].pos);
-                vert.bitangent = posToAvgB.at(tri.v[vi].pos);
+                vert.position = tri.v[vi].pos;
+                vert.normal   = posToAvgN.at(tri.v[vi].pos);
+                vert.uv       = tri.v[vi].uv;
                 verts.push_back(vert);
                 idx.push_back(newIdx);
             }
@@ -255,16 +208,6 @@ void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                           reinterpret_cast<void*>(offsetof(Vertex, uv)));
-
-    // Attribute 3: tangent.
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                          reinterpret_cast<void*>(offsetof(Vertex, tangent)));
-
-    // Attribute 4: bitangent.
-    glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                          reinterpret_cast<void*>(offsetof(Vertex, bitangent)));
 
     // Unbind to avoid accidental changes.
     glBindVertexArray(0);

@@ -8,46 +8,70 @@ far 500
 camPosition 0 0 110
 camTarget 0 0 50
 camUp 0 1 0
-
-#scene data — Assignment 2: Normal Mapping demo
-
-# Plane with normal map (diffuse + normal texture)
-object plane_nm
-translate -20 0 50
-rotation 0 0 0
-scale 20 20 20
+    
+#scene data
+object floor
+translate 0 -50 50
+rotation -90 0 0
+scale 100 100 100
+shininess 20
 mesh PLANE
-diffuseTexture data/textures/diffuse/stone_diffuse.png
-normalTexture  data/textures/normal/stone_normal.png
+normalMap data/textures/brick_normal_map.png
 
-# Sphere with normal map
-object sphere_nm
-translate 20 0 50
+object leftWall
+translate -50 0 50
+rotation 0 90 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object rightWall
+translate 50 0 50
+rotation 0 -90 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object frontWall
+translate 0 0 0
 rotation 0 0 0
-scale 15 15 15
-shininess 64
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object backWall
+translate 0 0 100
+rotation 0 180 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object ceil
+translate 0 50 50
+rotation 90 0 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object sphere
+translate 0 0 50
+rotation 0 0 0
+scale 30 30 30
+shininess 3
 mesh SPHERE
-diffuseTexture data/textures/diffuse/stone_diffuse.png
-normalTexture  data/textures/normal/stone_normal.png
-
-# Cube without normal map (fallback to Assignment 1 behavior)
-object cube_plain
-translate 0 -15 50
-rotation 0 0 0
-scale 10 10 10
-shininess 32
-mesh CUBE
+normalMap data/textures/circles_normal_map.png
 
 #light data
 light
-translate 0 30 70
+translate -40 0 50
 color 1 1 1
-lightType POINT
-attenuation 0 0.0 0.005
-ambient 0.1
-
-light
-translate -50 10 60
-color 0.8 0.8 1.0
-lightType DIR
-direction 1 -0.5 -0.5
+lightType POINT	
+attenuation 0 0.0 0.0005
+orbit 0 0 50
+sinusoidal 0 1.5 40
+ambient 0.2

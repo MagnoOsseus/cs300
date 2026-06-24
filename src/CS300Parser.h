@@ -40,9 +40,6 @@ class CS300Parser
         glm::vec3 sca;
         float     ns = 10.0f;
 
-        std::string diffuseTexture; // optional diffuse texture path
-        std::string normalTexture;  // optional normal map texture path
-
         std::vector<Animations::Anim> anims;
     };
 
