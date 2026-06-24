@@ -139,7 +139,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
     using VecList = std::vector<glm::vec3>;
     std::unordered_map<glm::vec3, VecList, Vec3Hash, Vec3Equal> posToNormals;
     std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToTangent;
-    std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posTobitangent;
+    std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToBitangent;
 
     for (size_t fi = 0; fi < tris_.size(); ++fi)
     {
@@ -158,7 +158,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
 
             // Accumulate tangent and bitangent (do not normalize before averaging).
             posToTangent[pos]    += triData[fi].tangent;
-            posTobitangent[pos]  += triData[fi].bitangent;
+            posToBitangent[pos]  += triData[fi].bitangent;
         }
     }
 
@@ -178,7 +178,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
         float len = glm::length(t);
         posToAvgT[pos] = (len > 1e-8f) ? t / len : glm::vec3(1.0f, 0.0f, 0.0f);
     }
-    for (const auto& [pos, b] : posTobitangent)
+    for (const auto& [pos, b] : posToBitangent)
     {
         float len = glm::length(b);
         posToAvgB[pos] = (len > 1e-8f) ? b / len : glm::vec3(0.0f, 1.0f, 0.0f);
