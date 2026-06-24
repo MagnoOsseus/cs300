@@ -21,7 +21,7 @@
 #pragma comment(lib, "windowscodecs.lib")
 #endif
 
-// Window dimensions.
+// Window size.
 static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 
@@ -29,7 +29,7 @@ static const float kMinLightDirectionLength = 1e-6f;
 static const float kAmbientBoost            = 0.25f;
 static const float kLightMarkerScale        = 1.2f;
 
-// ----- SceneObject -------------------------------------------------------
+// Scene object.
 
 glm::mat4 SceneObject::ModelMatrix() const
 {
@@ -41,9 +41,9 @@ glm::mat4 SceneObject::ModelMatrix() const
     return T * Rx * Ry * Rz * S;
 }
 
-// ----- Helper free functions ---------------------------------------------
+// Local helpers.
 
-// Creates a mesh from its type.
+// Build mesh by type.
 static Mesh BuildMesh(MeshKind kind, const std::string & objPath, int slices)
 {
     int rings = slices / 2;
@@ -59,7 +59,7 @@ static Mesh BuildMesh(MeshKind kind, const std::string & objPath, int slices)
     return Mesh::MakePlane();
 }
 
-// Creates OBJ files in data/meshes if they are missing.
+// Create missing OBJ files.
 static void EnsureMeshFiles()
 {
     namespace fs = std::filesystem;
@@ -86,7 +86,7 @@ static void EnsureMeshFiles()
     saveIfMissing("suzanne.obj",          Mesh::MakeSphere(32, 16));
 }
 
-// Converts parser light type to shader integer.
+// Map parser light type to shader value.
 static int ToShaderLightType(CS300Parser::LightType type)
 {
     switch (type)
@@ -98,7 +98,7 @@ static int ToShaderLightType(CS300Parser::LightType type)
     }
 }
 
-// Creates a simple UV-palette fallback texture.
+// Create fallback UV texture.
 static GLuint CreateFallbackTexture()
 {
     const int texW = 128;
@@ -146,7 +146,7 @@ static GLuint CreateFallbackTexture()
     return tex;
 }
 
-// Creates a tiny solid-white texture.
+// Create 1x1 white texture.
 static GLuint CreateWhiteTexture()
 {
     const unsigned char white[3] = { 255, 255, 255 };
@@ -162,7 +162,7 @@ static GLuint CreateWhiteTexture()
     return tex;
 }
 
-// Creates a tiny default normal map texture (tangent-space flat normal).
+// Create 1x1 flat normal map.
 static GLuint CreateDefaultNormalTexture()
 {
     const unsigned char normal[3] = { 128, 128, 255 };
@@ -178,7 +178,7 @@ static GLuint CreateDefaultNormalTexture()
     return tex;
 }
 
-// Resolves a texture path to an existing file, checking a remap directory.
+// Resolve texture path and remap when needed.
 static std::string ResolveTexturePath(const std::string& path)
 {
     namespace fs = std::filesystem;
@@ -262,7 +262,7 @@ static bool WicLoadRGBA(const std::string& path, std::vector<unsigned char>& pix
 }
 #endif
 
-// Loads an image file into an OpenGL texture.
+// Load image file as OpenGL texture.
 static GLuint LoadTexture2D(const std::string& sourcePath)
 {
     const std::string path = ResolveTexturePath(sourcePath);
@@ -300,7 +300,7 @@ static GLuint LoadTexture2D(const std::string& sourcePath)
     return tex;
 }
 
-// Compiles a shader from source text.
+// Compile one shader from source.
 static GLuint CompileShaderFromSource(GLenum type, const char * source)
 {
     GLuint shader = glCreateShader(type);
@@ -323,7 +323,7 @@ static GLuint CompileShaderFromSource(GLenum type, const char * source)
     return shader;
 }
 
-// Builds a simple shader program used to draw white light markers.
+// Build shader used for light markers.
 static GLuint CreateLightMarkerProgram()
 {
     static const char * kMarkerVert = R"glsl(
@@ -383,7 +383,7 @@ void main()
     return prog;
 }
 
-// ----- App implementation ------------------------------------------------
+// App methods.
 
 bool App::Init(const char* sceneFile)
 {
@@ -393,7 +393,7 @@ bool App::Init(const char* sceneFile)
         return false;
     }
 
-    // OpenGL context attributes.
+    // Set OpenGL context attributes.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -436,7 +436,7 @@ bool App::Init(const char* sceneFile)
     std::cout << "GL_RENDERER : " << glGetString(GL_RENDERER) << '\n';
     std::cout << "GL_VERSION  : " << glGetString(GL_VERSION)  << '\n';
 
-    // Load scene data and set up all GPU resources.
+    // Load scene and GPU resources.
     m_scene.LoadDataFromFile(sceneFile);
     EnsureMeshFiles();
 
@@ -456,7 +456,7 @@ bool App::Init(const char* sceneFile)
     return true;
 }
 
-// Loads all shader programs and queries uniform locations.
+// Load shaders and cache uniform locations.
 void App::SetupShaders()
 {
     if (!m_shaderManager.LoadProgram("main",    "data/shaders/phong.vert",   "data/shaders/phong.frag") ||
@@ -497,7 +497,7 @@ void App::SetupShaders()
     m_uNormMVP = glGetUniformLocation(m_normProg, "uMVP");
 }
 
-// Builds SceneObject list and uploads textures and meshes to the GPU.
+// Build scene objects and upload assets.
 void App::LoadScene()
 {
     m_fallbackTex      = CreateFallbackTexture();
@@ -536,7 +536,7 @@ void App::LoadScene()
         obj.anims  = so.anims;
         obj.currPos = obj.pos;
 
-        // Load diffuse texture.
+        // Load diffuse map.
         if (!obj.material.diffuseTexturePath.empty())
         {
             const std::string diffusePath = ResolveTexturePath(obj.material.diffuseTexturePath);
@@ -556,7 +556,7 @@ void App::LoadScene()
             }
         }
 
-        // Load normal map texture.
+        // Load normal map.
         if (!obj.material.normalTexturePath.empty())
         {
             const std::string normalPath = ResolveTexturePath(obj.material.normalTexturePath);
@@ -581,7 +581,7 @@ void App::LoadScene()
         m_objects.push_back(std::move(obj));
     }
 
-    // Initial animated positions for lights.
+    // Set initial animated light positions.
     m_lightCurrPos.resize(m_scene.lights.size());
     for (size_t i = 0; i < m_scene.lights.size(); ++i)
     {
@@ -589,7 +589,7 @@ void App::LoadScene()
     }
 }
 
-// Rebuilds meshes that depend on the current slice count.
+// Rebuild meshes that use slice count.
 void App::RebuildSlicedMeshes()
 {
     for (auto & o : m_objects)
@@ -604,7 +604,7 @@ void App::RebuildSlicedMeshes()
     std::cout << "Slices: " << m_currentSlices << '\n';
 }
 
-// Updates object and light positions from their animations.
+// Update object and light animation state.
 void App::UpdateAnimations(float elapsedTime)
 {
     for (auto & obj : m_objects)
@@ -626,7 +626,7 @@ void App::UpdateAnimations(float elapsedTime)
     }
 }
 
-// Processes SDL events for the current frame.
+// Process SDL events for this frame.
 void App::HandleEvents(bool& quit)
 {
     SDL_Event ev;
@@ -690,7 +690,7 @@ void App::HandleEvents(bool& quit)
     }
 }
 
-// Draws scene objects, optional normals, and light markers.
+// Draw scene, normals, and light markers.
 void App::RenderFrame()
 {
     const glm::mat4 V = m_camera.GetView();
@@ -709,7 +709,7 @@ void App::RenderFrame()
     glUniform1i(m_uLightNum, activeLightCount);
     glUniform1f(m_uAmbientBoost, kAmbientBoost);
 
-    // Upload per-light uniforms, using precomputed cosine values for spot angles.
+    // Upload all light uniforms.
     for (int i = 0; i < activeLightCount; ++i)
     {
         const auto & light = m_scene.lights[static_cast<size_t>(i)];
@@ -745,7 +745,7 @@ void App::RenderFrame()
     glBindTexture(GL_TEXTURE_2D, m_defaultNormalTex);
     glUniform1i(m_uNormalTex, 1);
 
-    // Draw scene objects.
+    // Draw objects.
     for (const auto & obj : m_objects)
     {
         if (!obj.mesh.IsValid())
@@ -765,7 +765,7 @@ void App::RenderFrame()
         obj.mesh.Draw();
     }
 
-    // Draw normals pass if enabled.
+    // Draw normal lines if enabled.
     if (m_showNormals)
     {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -784,7 +784,7 @@ void App::RenderFrame()
         }
     }
 
-    // Draw small spheres at each light position.
+    // Draw a sphere at each light.
     if (activeLightCount > 0 && m_lightMarkerMesh.IsValid())
     {
         glUseProgram(m_mainProg);
@@ -800,7 +800,7 @@ void App::RenderFrame()
         glUniform1i(m_uUseNormalMap, 0);
         glUniform1f(m_uShininess,    64.0f);
 
-        // Use a virtual bright point light at the camera so markers are always lit.
+        // Use a camera light so markers stay visible.
         glUniform1i(m_uLightNum,    1);
         glUniform1f(m_uAmbientBoost, 1.0f);
         glUniform1i(m_lightUniforms[0].type,          0);
@@ -809,8 +809,8 @@ void App::RenderFrame()
         glUniform3fv(m_lightUniforms[0].color,      1, glm::value_ptr(glm::vec3(1.0f)));
         glUniform1f(m_lightUniforms[0].ambient,       1.0f);
         glUniform3fv(m_lightUniforms[0].attenuation,1, glm::value_ptr(glm::vec3(1.0f, 0.0f, 0.0f)));
-        glUniform1f(m_lightUniforms[0].innerAngleCos, 1.0f);  // cos(0 deg) = 1
-        glUniform1f(m_lightUniforms[0].outerAngleCos,-1.0f);  // cos(180 deg) = -1
+        glUniform1f(m_lightUniforms[0].innerAngleCos, 1.0f);  // Spot inner cosine.
+        glUniform1f(m_lightUniforms[0].outerAngleCos,-1.0f);  // Spot outer cosine.
         glUniform1f(m_lightUniforms[0].falloff,       1.0f);
 
         for (int i = 0; i < activeLightCount; ++i)
@@ -831,7 +831,7 @@ void App::RenderFrame()
     SDL_GL_SwapWindow(m_window);
 }
 
-// Main loop: processes input, updates state, renders frames.
+// Main render loop.
 void App::Run()
 {
     Uint64 prevTick = SDL_GetTicks();
@@ -851,7 +851,7 @@ void App::Run()
     }
 }
 
-// Frees all GPU resources and shuts down SDL.
+// Release GPU resources and close SDL.
 void App::Shutdown()
 {
     for (auto & o : m_objects)

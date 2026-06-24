@@ -18,7 +18,7 @@
 
 static const int kMaxLights = 8;
 
-// Mesh type each scene object can use.
+// Mesh type per scene object.
 enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
 
 // Material data for shading.
@@ -32,7 +32,7 @@ struct Material
     bool        hasNormalMap        = false;
 };
 
-// Scene object with transform, mesh and animations.
+// Scene object data.
 struct SceneObject
 {
     std::string  name;
@@ -40,19 +40,19 @@ struct SceneObject
     std::string  objPath;
     Mesh         mesh;
 
-    glm::vec3 pos{ 0.0f };     // original position from scene file
-    glm::vec3 currPos{ 0.0f }; // animated position for this frame
+    glm::vec3 pos{ 0.0f };     // Scene file position.
+    glm::vec3 currPos{ 0.0f }; // Position for current frame.
     glm::vec3 rot{ 0.0f };
     glm::vec3 sca{ 1.0f };
     Material  material;
 
     std::vector<Animations::Anim> anims;
 
-    // Builds the model matrix using the animated position.
+    // Build model matrix from current transform.
     glm::mat4 ModelMatrix() const;
 };
 
-// Uniform locations for one light in the shader.
+// Uniform locations for one light.
 struct LightUniformLoc
 {
     GLint type          = -1;
@@ -66,7 +66,7 @@ struct LightUniformLoc
     GLint falloff       = -1;
 };
 
-// Main application: handles init, scene loading, render loop, and cleanup.
+// Main app class.
 class App
 {
 public:
@@ -101,7 +101,7 @@ private:
     GLuint m_mainProg = 0;
     GLuint m_normProg = 0;
 
-    // Uniform locations for the main shader.
+    // Main shader uniforms.
     GLint m_uModel        = -1;
     GLint m_uView         = -1;
     GLint m_uProj         = -1;
@@ -112,12 +112,12 @@ private:
     GLint m_uShininess    = -1;
     GLint m_uAmbientBoost = -1;
     GLint m_uLightNum     = -1;
-    // Uniform location for the normals shader.
+    // Normals shader uniform.
     GLint m_uNormMVP = -1;
 
     std::array<LightUniformLoc, kMaxLights> m_lightUniforms{};
 
-    // Rendering toggles and state.
+    // Render toggles and state.
     bool  m_showNormals   = false;
     bool  m_faceNormals   = true;
     bool  m_textureMode   = false;

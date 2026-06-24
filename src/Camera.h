@@ -5,19 +5,19 @@
 #include <algorithm>
 #include <cmath>
 
-// Orbital camera that always looks at the target.
+// Orbit camera that always looks at target.
 class Camera
 {
 public:
-    // Spherical coordinates: r=distance, alpha=polar, beta=azimuth.
+    // Spherical coords: distance, polar, azimuth.
     float r     = 10.0f;
     float alpha = glm::half_pi<float>();
     float beta  = -glm::half_pi<float>();
 
-    // Point the camera orbits around.
+    // Orbit center.
     glm::vec3 target{ 0.0f };
 
-    // Projection parameters.
+    // Projection values.
     float fovY   = glm::radians(60.0f);
     float aspect = 16.0f / 9.0f;
     float zNear  = 0.1f;
@@ -32,7 +32,7 @@ public:
     static constexpr float kAlphaMax = glm::pi<float>() - 0.01f;
     static constexpr float kRMin     = 0.5f;
 
-    // Sets up camera from a position and target.
+    // Initialize from position and target.
     void InitFromLookAt(const glm::vec3& pos,
                         const glm::vec3& tgt,
                         const glm::vec3& )
@@ -52,7 +52,7 @@ public:
         }
     }
 
-    // Handles W/S (elevation), A/D (orbit), Q/E (zoom).
+    // Handle W/S, A/D, Q/E controls.
     void ProcessInput(const bool* keys, float dt)
     {
         float step = dt * 60.0f;
@@ -69,12 +69,12 @@ public:
         if (keys[SDL_SCANCODE_Q]) r -= zoomSensitivity * step;
         if (keys[SDL_SCANCODE_E]) r += zoomSensitivity * step;
 
-        // Clamp to valid ranges.
+        // Clamp ranges.
         alpha = std::max(kAlphaMin, std::min(kAlphaMax, alpha));
         r     = std::max(kRMin, r);
     }
 
-    // Returns camera world position from spherical coords.
+    // Get camera position.
     glm::vec3 GetPosition() const
     {
         return target + glm::vec3(
@@ -83,7 +83,7 @@ public:
             r * std::sin(alpha) * std::sin(beta));
     }
 
-    // Returns the view matrix.
+    // Get view matrix.
     glm::mat4 GetView() const
     {
         glm::vec3 pos = GetPosition();
@@ -91,10 +91,9 @@ public:
         return glm::lookAt(pos, target, up);
     }
 
-    // Returns the projection matrix.
+    // Get projection matrix.
     glm::mat4 GetProjection() const
     {
         return glm::perspective(fovY, aspect, zNear, zFar);
     }
 };
-
