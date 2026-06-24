@@ -139,13 +139,15 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\animations.cpp" />    <ClCompile Include="src\CS300Parser.cpp" />
+    <ClCompile Include="src\animations.cpp" />    <ClCompile Include="src\App.cpp" />
+    <ClCompile Include="src\CS300Parser.cpp" />
     <ClCompile Include="src\Mesh.cpp" />
     <ClCompile Include="src\OGLDebug.cpp" />
     <ClCompile Include="src\ShaderManager.cpp" />    <ClCompile Include="src\\main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\animations.h" />
+    <ClInclude Include="src\App.h" />
     <ClInclude Include="src\Camera.h" />
     <ClInclude Include="src\CS300Parser.h" />
     <ClInclude Include="src\Mesh.h" />

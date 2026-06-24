@@ -55,9 +55,12 @@ class CS300Parser
         glm::vec3  color{ 1.0f };
         float      ambient      = 0.0f;
         glm::vec3  attenuation{ 1.0f, 0.0f, 0.0f };
-        float      innerAngle   = 0.0f;
-        float      outerAngle   = 30.0f;
-        float      falloff      = 1.0f;
+        float      innerAngle    = 0.0f;
+        float      outerAngle    = 30.0f;
+        float      falloff       = 1.0f;
+        // Precomputed cos(radians(angle)) values, set on load.
+        float      innerAngleCos = 1.0f;
+        float      outerAngleCos = 0.8660254f;
 
         std::vector<Animations::Anim> anims;
     };

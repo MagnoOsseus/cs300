@@ -5,19 +5,19 @@
 #include <string>
 #include <unordered_map>
 
-// Loads and stores OpenGL shader programs.
+// Load and store OpenGL programs.
 class ShaderManager
 {
 public:
-    // Builds a program from vertex and fragment shader files.
+    // Build program from vertex and fragment files.
     bool LoadProgram(const std::string & programName,
                      const std::string & vertexPath,
                      const std::string & fragmentPath);
 
-    // Returns a program id or 0 if not found.
+    // Return program id, or 0 if missing.
     GLuint GetProgram(const std::string & programName) const;
 
-    // Deletes all programs.
+    // Delete all programs.
     void Clear();
 
     ~ShaderManager();

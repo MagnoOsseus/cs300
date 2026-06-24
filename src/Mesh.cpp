@@ -12,7 +12,7 @@
 #include <sstream>
 #include <unordered_map>
 
-// Hash to use glm::vec3 as a key.
+// Hash for glm::vec3 keys.
 struct Vec3Hash
 {
     size_t operator()(const glm::vec3& v) const noexcept
@@ -25,14 +25,14 @@ struct Vec3Hash
     }
 };
 
-// Exact comparator for glm::vec3.
+// Exact compare for glm::vec3.
 struct Vec3Equal
 {
     bool operator()(const glm::vec3& a, const glm::vec3& b) const noexcept
     { return a.x == b.x && a.y == b.y && a.z == b.z; }
 };
 
-// Key to merge vertices by position + UV.
+// Key for position + UV merge.
 struct VertKey { glm::vec3 pos; glm::vec2 uv; };
 
 // Hash for VertKey.
@@ -49,7 +49,7 @@ struct VertKeyHash
     }
 };
 
-// Comparator for VertKey.
+// Compare VertKey values.
 struct VertKeyEqual
 {
     bool operator()(const VertKey& a, const VertKey& b) const noexcept
@@ -98,20 +98,19 @@ static void ComputeTriangleTangentBitangent(const glm::vec3& p0,
     bitangent = SafeNormalize(glm::cross(n, tangent), glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
-// Builds a non-indexed-like vertex buffer with one normal per triangle.
-// This produces flat shading.
+// Build flat-shaded vertices.
 void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
                             std::vector<unsigned int>& idx) const
 {
     verts.clear();
     idx.clear();
-    // One independent vertex per triangle corner.
+    // One vertex per triangle corner.
     verts.reserve(tris_.size() * 3);
     idx.reserve(tris_.size() * 3);
 
     for (const auto& tri : tris_)
     {
-        // Face normal from cross product.
+        // Compute face normal.
         glm::vec3 e1 = tri.v[1].pos - tri.v[0].pos;
         glm::vec3 e2 = tri.v[2].pos - tri.v[0].pos;
         glm::vec3 n  = glm::normalize(glm::cross(e1, e2));
@@ -119,13 +118,13 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
         ComputeTriangleTangentBitangent(tri.v[0].pos, tri.v[1].pos, tri.v[2].pos,
                                         tri.v[0].uv, tri.v[1].uv, tri.v[2].uv, t, b);
 
-        // Start index for this triangle's vertices.
+        // Base index for this triangle.
         auto base = static_cast<unsigned int>(verts.size());
         for (int i = 0; i < 3; ++i)
         {
             Vertex vert;
             vert.position = tri.v[i].pos;
-            // All three vertices use the same face normal.
+            // Use the same normal for the 3 corners.
             vert.normal   = n;
             vert.uv       = tri.v[i].uv;
             vert.tangent = t;
@@ -135,15 +134,14 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
         }
     }
 }
-// Builds indexed vertices with averaged normals per position.
-// This produces smooth shading where geometry is shared.
+// Build smooth-shaded indexed vertices.
 void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
                                 std::vector<unsigned int>& idx) const
 {
     verts.clear();
     idx.clear();
 
-    // Compute one normal for each source triangle.
+    // Compute one normal per triangle.
     std::vector<glm::vec3> faceN(tris_.size());
     for (size_t fi = 0; fi < tris_.size(); ++fi)
     {
@@ -152,7 +150,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
         faceN[fi]    = glm::normalize(glm::cross(e1, e2));
     }
 
-    // Group unique face normals by vertex position.
+    // Group face normals by vertex position.
     using NormalList = std::vector<glm::vec3>;
     std::unordered_map<glm::vec3, NormalList, Vec3Hash, Vec3Equal> posToNormals;
 
@@ -167,14 +165,14 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
             bool dup = false;
             for (const auto& existing : list)
             {
-                // Skip near-duplicate normals.
+                // Skip almost duplicate normals.
                 if (glm::length(existing - fn) < 1e-5f) { dup = true; break; }
             }
             if (!dup) list.push_back(fn);
         }
     }
 
-    // Average collected normals for each position.
+    // Average normals per position.
     std::unordered_map<glm::vec3, glm::vec3, Vec3Hash, Vec3Equal> posToAvgN;
     for (const auto& [pos, normals] : posToNormals)
     {
@@ -183,7 +181,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
         posToAvgN[pos] = glm::normalize(sum);
     }
 
-    // Build final index buffer using unique (position, uv) pairs.
+    // Build index buffer from unique (pos, uv).
     std::unordered_map<VertKey, unsigned int, VertKeyHash, VertKeyEqual> vertMap;
     verts.reserve(tris_.size() * 3);
     idx.reserve(tris_.size() * 3);
@@ -203,7 +201,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
             auto it = vertMap.find(key);
             if (it == vertMap.end())
             {
-                // New vertex, add it.
+                // Add new vertex.
                 auto newIdx = static_cast<unsigned int>(verts.size());
                 vertMap[key] = newIdx;
                 Vertex vert;
@@ -221,7 +219,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
             }
             else
             {
-                // Reuse previously created vertex index.
+                // Reuse existing vertex.
                 idx.push_back(it->second);
                 tangentSums[it->second] += triTangent;
                 bitangentSums[it->second] += triBitangent;
@@ -242,7 +240,7 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
     }
 }
 
-// Creates and uploads VAO/VBO/EBO with vertex layout.
+// Create and upload VAO/VBO/EBO.
 void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
                          const std::vector<unsigned int>& idx)
 {
@@ -253,7 +251,7 @@ void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
 
     glBindVertexArray(vao_);
 
-    // Upload packed vertex data.
+    // Upload vertex data.
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER,
                  static_cast<GLsizeiptr>(verts.size() * sizeof(Vertex)),
@@ -290,29 +288,29 @@ void Mesh::UploadBuffers(const std::vector<Vertex>&       verts,
     glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                           reinterpret_cast<void*>(offsetof(Vertex, bitangent)));
 
-    // Unbind to avoid accidental changes.
+    // Unbind buffers.
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // Store index count for draw call.
+    // Store index count.
     drawCount_ = static_cast<int>(idx.size());
 }
 
-// Creates and uploads line vertices used to draw normals.
+// Create and upload normal lines.
 void Mesh::UploadNormalLines(const std::vector<Vertex>& verts, float length)
 {
-    // Two points per vertex: base and tip.
+    // Two points per normal line.
     std::vector<glm::vec3> lineVerts;
     lineVerts.reserve(verts.size() * 2);
     for (const auto& v : verts)
     {
-        // Start point at vertex position.
+        // Line start.
         lineVerts.push_back(v.position);
-        // End point in normal direction.
+        // Line end.
         lineVerts.push_back(v.position + v.normal * length);
     }
 
-    // Lazily create line VAO/VBO.
+    // Create line VAO/VBO on demand.
     if (normVao_ == 0) glGenVertexArrays(1, &normVao_);
     if (normVbo_ == 0) glGenBuffers(1, &normVbo_);
 
@@ -322,18 +320,18 @@ void Mesh::UploadNormalLines(const std::vector<Vertex>& verts, float length)
                  static_cast<GLsizeiptr>(lineVerts.size() * sizeof(glm::vec3)),
                  lineVerts.data(), GL_STATIC_DRAW);
 
-    // Single vec3 attribute for line vertices.
+    // Single position attribute.
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // Store vertex count for GL_LINES draw.
+    // Store line vertex count.
     normCount_ = static_cast<int>(lineVerts.size());
 }
 
-// Uploads mesh data according to selected normal mode.
+// Upload mesh using selected normal mode.
 void Mesh::Upload(bool faceNormals)
 {
     faceNormals_ = faceNormals;
@@ -350,14 +348,14 @@ void Mesh::Upload(bool faceNormals)
     UploadNormalLines(verts);
 }
 
-// Switches normal mode and rebuilds GPU buffers.
+// Change normal mode and rebuild buffers.
 void Mesh::SetNormalMode(bool faceNormals)
 {
     if (!tris_.empty())
         Upload(faceNormals);
 }
 
-// Draws indexed triangles.
+// Draw triangles.
 void Mesh::Draw() const
 {
     if (vao_ == 0 || drawCount_ == 0) return;
@@ -366,7 +364,7 @@ void Mesh::Draw() const
     glBindVertexArray(0);
 }
 
-// Draws normal visualization lines.
+// Draw normal debug lines.
 void Mesh::DrawNormals() const
 {
     if (normVao_ == 0 || normCount_ == 0) return;
@@ -375,7 +373,7 @@ void Mesh::DrawNormals() const
     glBindVertexArray(0);
 }
 
-// Releases all allocated GPU resources.
+// Release GPU resources.
 void Mesh::Free()
 {
     if (ebo_)     { glDeleteBuffers(1, &ebo_);          ebo_     = 0; }
@@ -386,18 +384,18 @@ void Mesh::Free()
     drawCount_ = normCount_ = 0;
 }
 
-// Generates a plane in the local [-0.5, 0.5] range.
+// Build a plane in [-0.5, 0.5].
 Mesh Mesh::MakePlane()
 {
     Mesh m;
     m.tris_.resize(2);
 
-    // Triangle 0.
+    // First triangle.
     m.tris_[0].v[0] = {glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f)};
     m.tris_[0].v[1] = {glm::vec3( 0.5f, -0.5f, 0.0f), glm::vec2(1.0f, 0.0f)};
     m.tris_[0].v[2] = {glm::vec3( 0.5f,  0.5f, 0.0f), glm::vec2(1.0f, 1.0f)};
 
-    // Triangle 1.
+    // Second triangle.
     m.tris_[1].v[0] = {glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f)};
     m.tris_[1].v[1] = {glm::vec3( 0.5f,  0.5f, 0.0f), glm::vec2(1.0f, 1.0f)};
     m.tris_[1].v[2] = {glm::vec3(-0.5f,  0.5f, 0.0f), glm::vec2(0.0f, 1.0f)};
@@ -405,39 +403,36 @@ Mesh Mesh::MakePlane()
     return m;
 }
 
-// Generates a cube with per-face UV mapping.
+// Build a cube with face UVs.
 Mesh Mesh::MakeCube()
 {
     Mesh m;
 
-    // Quad definition for each cube face.
+    // 4 corners per face.
     struct FaceDef { glm::vec3 verts[4]; };
 
     FaceDef faces[6] = {
-        // +Z front face.
+        // +Z face.
         {{{-0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}}},
-        // -Z back face.
+        // -Z face.
         {{{ 0.5f,-0.5f,-0.5f}, {-0.5f,-0.5f,-0.5f}, {-0.5f, 0.5f,-0.5f}, { 0.5f, 0.5f,-0.5f}}},
-        // +X right face.
+        // +X face.
         {{{ 0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f,-0.5f}, { 0.5f, 0.5f,-0.5f}, { 0.5f, 0.5f, 0.5f}}},
-        // -X left face.
+        // -X face.
         {{{-0.5f,-0.5f,-0.5f}, {-0.5f,-0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f,-0.5f}}},
-        // +Y top face.
+        // +Y face.
         {{{-0.5f, 0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f}, { 0.5f, 0.5f,-0.5f}, {-0.5f, 0.5f,-0.5f}}},
-        // -Y bottom face.
+        // -Y face.
         {{{-0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f, 0.5f}}},
     };
 
-    // Standard UV layout: (0,0)=bottom-left, (1,0)=bottom-right, (1,1)=top-right, (0,1)=top-left.
+    // Default UV order.
     glm::vec2 uvsStd[4] = {{0,0},{1,0},{1,1},{0,1}};
 
-    // Top face (+Y) verts: v0(-x,+z) v1(+x,+z) v2(+x,-z) v3(-x,-z).
-    // U = 1 at -x, 0 at +x; V = 1 at -z (back), 0 at +z (front).
-    // → yellow(1,1) at back-left, black(0,0) at front-right.
+    // Custom UVs for top face.
     glm::vec2 uvsTop[4] = {{1,0},{0,0},{0,1},{1,1}};
 
-    // Bottom face (-Y) verts: v0(-x,-z) v1(+x,-z) v2(+x,+z) v3(-x,+z).
-    // Swap green<->red and black<->yellow on the bottom face.
+    // Custom UVs for bottom face.
     glm::vec2 uvsBtm[4] = {{1,0},{1,1},{0,1},{0,0}};
 
     for (int fi = 0; fi < 6; ++fi)
@@ -461,7 +456,7 @@ Mesh Mesh::MakeCube()
     return m;
 }
 
-// Generates a cone with side triangles and a base cap.
+// Build a cone with side and base.
 Mesh Mesh::MakeCone(int slices)
 {
     if (slices < 4) slices = 4;
@@ -478,15 +473,15 @@ Mesh Mesh::MakeCone(int slices)
     for (int i = 0; i < slices; ++i)
     {
         float a0 = 2.0f * pi * float(i)           / float(slices);
-        // Use modulo so the last slice closes exactly on vertex 0.
+        // Wrap to close the seam.
         float aN = 2.0f * pi * float((i + 1) % slices) / float(slices);
 
         glm::vec3 b0(r * std::cos(a0), bot, r * std::sin(a0));
         glm::vec3 b1(r * std::cos(aN), bot, r * std::sin(aN));
 
-        // Side triangle using cylindrical UVs.
+        // Side triangle.
         {
-            // u follows angle around the cone, v goes bottom->top.
+            // UV follows angle and height.
             float u0   = float(i)     / float(slices);
             float u1   = float(i + 1) / float(slices);
             float uMid = (u0 + u1) * 0.5f;
@@ -498,7 +493,7 @@ Mesh Mesh::MakeCone(int slices)
             m.tris_.push_back(t);
         }
 
-        // Base cap: angular UVs matching cone top style.
+        // Base cap triangle.
         {
             float u0   = float(i)     / float(slices);
             float u1   = float(i + 1) / float(slices);
@@ -515,7 +510,7 @@ Mesh Mesh::MakeCone(int slices)
     return m;
 }
 
-// Generates a cylinder with side band and top/bottom caps.
+// Build a cylinder with caps.
 Mesh Mesh::MakeCylinder(int slices)
 {
     if (slices < 4) slices = 4;
@@ -532,7 +527,7 @@ Mesh Mesh::MakeCylinder(int slices)
     for (int i = 0; i < slices; ++i)
     {
         float a0 = 2.0f * pi * float(i)               / float(slices);
-        // Use modulo so the last slice closes exactly on vertex 0.
+        // Wrap to close the seam.
         float aN = 2.0f * pi * float((i + 1) % slices) / float(slices);
 
         glm::vec3 t0(r * std::cos(a0), top, r * std::sin(a0));
@@ -540,11 +535,11 @@ Mesh Mesh::MakeCylinder(int slices)
         glm::vec3 b0(r * std::cos(a0), bot, r * std::sin(a0));
         glm::vec3 b1(r * std::cos(aN), bot, r * std::sin(aN));
 
-        // UV slice range for this side segment.
+        // UV range for this slice.
         float u0 = float(i)     / float(slices);
         float u1 = float(i + 1) / float(slices);
 
-        // Side quad split into two triangles.
+        // Side quad as two triangles.
         {
             RawTri ta;
             ta.v[0] = {b0, glm::vec2(u0, 0.0f)};
@@ -559,7 +554,7 @@ Mesh Mesh::MakeCylinder(int slices)
             m.tris_.push_back(tb);
         }
 
-        // Top cap: cylindrical UVs — u=angle, v=1 (top edge of texture).
+        // Top cap triangle.
         {
             float uMid = (u0 + u1) * 0.5f;
             RawTri t;
@@ -569,7 +564,7 @@ Mesh Mesh::MakeCylinder(int slices)
             m.tris_.push_back(t);
         }
 
-        // Bottom cap: cylindrical UVs — u=angle, v=0 (bottom edge of texture).
+        // Bottom cap triangle.
         {
             float uMid = (u0 + u1) * 0.5f;
             RawTri t;
@@ -583,7 +578,7 @@ Mesh Mesh::MakeCylinder(int slices)
     return m;
 }
 
-// Generates a sphere from rings and slices.
+// Build a sphere from rings and slices.
 Mesh Mesh::MakeSphere(int slices, int rings)
 {
     if (slices < 4) slices = 4;
@@ -592,7 +587,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     Mesh m;
     const float pi = glm::pi<float>();
 
-    // Helpers to get sphere position and UV at a ring/slice.
+    // Helpers for sphere position and UV.
     auto getPos = [&](int ring, int slice) -> glm::vec3 {
         if (ring == 0)     return glm::vec3(0.0f,  0.5f, 0.0f);
         if (ring == rings) return glm::vec3(0.0f, -0.5f, 0.0f);
@@ -604,7 +599,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
             0.5f * std::sin(theta) * std::sin(phi));
     };
     auto getUV = [&](int ring, int slice) -> glm::vec2 {
-        // U goes around (0 at seam, 1 at seam), V=1 at north pole, V=0 at south pole.
+        // UV wraps around ring and pole.
         return glm::vec2(float(slice) / float(slices),
                          1.0f - float(ring) / float(rings));
     };
@@ -613,7 +608,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     {
         for (int j = 0; j < slices; ++j)
         {
-            // getPos wraps (slice % slices) so the seam closes exactly.
+            // getPos wraps slices to close seam.
             glm::vec3 p00 = getPos(i,   j);
             glm::vec3 p10 = getPos(i,   j + 1);
             glm::vec3 p01 = getPos(i+1, j);
@@ -626,7 +621,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
 
             if (i == 0)
             {
-                // Top fan.
+                // Top fan triangle.
                 RawTri t;
                 t.v[0] = {p00, uv00};
                 t.v[1] = {p11, uv11};
@@ -635,7 +630,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
             }
             else if (i == rings - 1)
             {
-                // Bottom fan.
+                // Bottom fan triangle.
                 RawTri t;
                 t.v[0] = {p00, uv00};
                 t.v[1] = {p10, uv10};
@@ -644,7 +639,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
             }
             else
             {
-                // Middle band split into two triangles.
+                // Middle band triangles.
                 RawTri t1, t2;
                 t1.v[0] = {p00, uv00};
                 t1.v[1] = {p10, uv10};
@@ -663,7 +658,7 @@ Mesh Mesh::MakeSphere(int slices, int rings)
     return m;
 }
 
-// Loads OBJ geometry and triangulates faces if needed.
+// Load OBJ and triangulate faces.
 Mesh Mesh::LoadOBJ(const std::string& path)
 {
     std::ifstream file(path);
@@ -673,12 +668,12 @@ Mesh Mesh::LoadOBJ(const std::string& path)
         return MakeSphere(16, 8);   
     }
 
-    // Source arrays from OBJ records.
+    // OBJ source arrays.
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
     std::vector<glm::vec2> texcoords;
 
-    // Face indices (OBJ is 1-based).
+    // OBJ face indices are 1-based.
     struct FaceVert { int p, t, n; };
     struct Face { FaceVert v[3]; };
     std::vector<Face> faces;
@@ -711,13 +706,13 @@ Mesh Mesh::LoadOBJ(const std::string& path)
         }
         else if (token == "f")
         {
-            // Parse face and triangulate by fan.
+            // Parse one face.
             std::vector<FaceVert> fv;
             std::string tok;
             while (ss >> tok)
             {
                 FaceVert fvert{0, 0, 0};
-                // Supports formats: v, v/vt, v//vn, v/vt/vn.
+                // Supports v, v/vt, v//vn, v/vt/vn.
                 std::replace(tok.begin(), tok.end(), '/', ' ');
                 std::istringstream ts(tok);
                 ts >> fvert.p;
@@ -738,7 +733,7 @@ Mesh Mesh::LoadOBJ(const std::string& path)
         }
     }
 
-    // Build internal raw triangle list.
+    // Build internal triangle list.
     Mesh m;
     m.tris_.reserve(faces.size());
 
@@ -753,7 +748,7 @@ Mesh Mesh::LoadOBJ(const std::string& path)
             glm::vec3 pos(0.0f);
             glm::vec2 uv(0.0f);
 
-            // Read available position and UV safely.
+            // Read position and UV safely.
             if (pi >= 0 && pi < static_cast<int>(positions.size()))
                 pos = positions[pi];
             if (ti >= 0 && ti < static_cast<int>(texcoords.size()))
@@ -773,7 +768,7 @@ Mesh Mesh::LoadOBJ(const std::string& path)
     return m;
 }
 
-// Exports mesh geometry to an OBJ file.
+// Export mesh as OBJ file.
 void Mesh::SaveOBJ(const std::string& path) const
 {
     std::ofstream f(path);
@@ -783,7 +778,7 @@ void Mesh::SaveOBJ(const std::string& path) const
         return;
     }
 
-    // Build flat-shaded data for export.
+    // Build flat data for export.
     std::vector<Vertex>       verts;
     std::vector<unsigned int> idx;
     BuildFaceNormals(verts, idx);
@@ -797,7 +792,7 @@ void Mesh::SaveOBJ(const std::string& path) const
     for (const auto& v : verts)
         f << "vn " << v.normal.x   << ' ' << v.normal.y   << ' ' << v.normal.z   << '\n';
 
-    // Write faces using matching v/vt/vn indices.
+    // Write faces with v/vt/vn indices.
     for (size_t i = 0; i + 2 < idx.size(); i += 3)
     {
         auto a = idx[i] + 1, b = idx[i+1] + 1, c = idx[i+2] + 1;
