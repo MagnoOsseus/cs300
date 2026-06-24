@@ -447,7 +447,7 @@ bool App::Init(const char* sceneFile)
     m_camera.InitFromLookAt(m_scene.camPos, m_scene.camTarget, m_scene.camUp);
 
     SetupShaders();
-    LoadScene(sceneFile);
+    LoadScene();
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -498,7 +498,7 @@ void App::SetupShaders()
 }
 
 // Builds SceneObject list and uploads textures and meshes to the GPU.
-void App::LoadScene(const char*)
+void App::LoadScene()
 {
     m_fallbackTex      = CreateFallbackTexture();
     m_whiteTex         = CreateWhiteTexture();
@@ -627,7 +627,7 @@ void App::UpdateAnimations(float elapsedTime)
 }
 
 // Processes SDL events for the current frame.
-void App::HandleEvents(float /*dt*/, bool& quit)
+void App::HandleEvents(bool& quit)
 {
     SDL_Event ev;
     while (SDL_PollEvent(&ev))
@@ -844,7 +844,7 @@ void App::Run()
         prevTick = nowTick;
         m_elapsedTime += dt;
 
-        HandleEvents(dt, quit);
+        HandleEvents(quit);
         m_camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);
         UpdateAnimations(m_elapsedTime);
         RenderFrame();

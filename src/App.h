@@ -75,11 +75,11 @@ public:
     void Shutdown();
 
 private:
-    void LoadScene(const char* sceneFile);
+    void LoadScene();
     void SetupShaders();
     void RebuildSlicedMeshes();
     void UpdateAnimations(float elapsedTime);
-    void HandleEvents(float dt, bool& quit);
+    void HandleEvents(bool& quit);
     void RenderFrame();
 
     SDL_Window*   m_window = nullptr;

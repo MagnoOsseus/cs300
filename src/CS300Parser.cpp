@@ -252,7 +252,7 @@ void CS300Parser::LoadDataFromFile(const char * filename)
                 lights.back().innerAngle    = spotAtt.x;
                 lights.back().outerAngle    = spotAtt.y;
                 lights.back().falloff       = spotAtt.z;
-                // Precompute cosines so the shader can use them directly.
+                // Precompute cosines once so the shader avoids per-fragment cos(radians(...)) calls.
                 lights.back().innerAngleCos = std::cos(glm::radians(spotAtt.x));
                 lights.back().outerAngleCos = std::cos(glm::radians(spotAtt.y));
             }
