@@ -1,0 +1,77 @@
+
+#camera data
+fovy 60.0
+width 1280.0
+height 720.0
+near 1
+far 500
+camPosition 0 0 110
+camTarget 0 0 50
+camUp 0 1 0
+    
+#scene data
+object floor
+translate 0 -50 50
+rotation -90 0 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object leftWall
+translate -50 0 50
+rotation 0 90 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object rightWall
+translate 50 0 50
+rotation 0 -90 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object frontWall
+translate 0 0 0
+rotation 0 0 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object backWall
+translate 0 0 100
+rotation 0 180 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object ceil
+translate 0 50 50
+rotation 90 0 0
+scale 100 100 100
+shininess 20
+mesh PLANE
+normalMap data/textures/brick_normal_map.png
+
+object sphere
+translate 0 0 50
+rotation 0 0 0
+scale 30 30 30
+shininess 3
+mesh SPHERE
+normalMap data/textures/circles_normal_map.png
+
+#light data
+light
+translate -40 0 50
+color 1 1 1
+lightType POINT	
+attenuation 0 0.0 0.0005
+orbit 0 0 50
+sinusoidal 0 1.5 40
+ambient 0.2
