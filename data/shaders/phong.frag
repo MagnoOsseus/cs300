@@ -98,14 +98,14 @@ void main()
     }
     if (uRenderMode == RENDER_MODE_TANGENT)
     {
-        // Show the camera-space tangent mapped into displayable color.
-        fragColor = vec4(VectorToColor(vViewTangent), 1.0);
+        // Remap [-1,1] to [0,1] so all directions produce visible color.
+        fragColor = vec4(normalize(vViewTangent) * 0.5 + 0.5, 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_BITANGENT)
     {
-        // Show the camera-space bitangent mapped into displayable color.
-        fragColor = vec4(VectorToColor(vViewBitangent), 1.0);
+        // Remap [-1,1] to [0,1] so all directions produce visible color.
+        fragColor = vec4(normalize(vViewBitangent) * 0.5 + 0.5, 1.0);
         return;
     }
 
