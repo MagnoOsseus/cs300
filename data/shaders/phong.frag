@@ -91,7 +91,8 @@ void main()
 {
     if (uRenderMode == RENDER_MODE_NORMAL)
     {
-        fragColor = vec4(VectorToColor(vViewNormal), 1.0);
+        // Raw normal as color: negative components clamp to 0 (black).
+        fragColor = vec4(normalize(vViewNormal), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_TANGENT)
