@@ -28,7 +28,11 @@ static const GLsizei WIN_H = 720;
 static const float kMinLightDirectionLength = 1e-6f;
 static const float kAmbientBoost            = 0.25f;
 static const float kLightMarkerScale        = 1.2f;
-static const int kRenderModeCount           = 4;
+static const int kRenderModeNormalMapping   = 0;
+static const int kRenderModeNormal          = 1;
+static const int kRenderModeTangent         = 2;
+static const int kRenderModeBitangent       = 3;
+static const int kRenderModeCount           = kRenderModeBitangent + 1;
 
 // Scene object.
 
@@ -103,10 +107,12 @@ static const char* RenderModeName(int renderMode)
 {
     switch (renderMode)
     {
-    case 1:  return "NORMAL";
-    case 2:  return "TANGENT";
-    case 3:  return "BITANGENT";
-    default: return "NORMAL MAPPING";
+    case kRenderModeNormalMapping:
+        return "NORMAL MAPPING";
+    case kRenderModeNormal:    return "NORMAL";
+    case kRenderModeTangent:   return "TANGENT";
+    case kRenderModeBitangent: return "BITANGENT";
+    default:                   return "UNKNOWN";
     }
 }
 

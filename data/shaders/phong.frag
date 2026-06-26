@@ -39,7 +39,7 @@ uniform Light uLight[LIGHT_NUM_MAX];
 
 out vec4 fragColor;
 
-vec3 BasisToColor(vec3 basis)
+vec3 VectorToColor(vec3 basis)
 {
     return normalize(basis) * 0.5 + 0.5;
 }
@@ -91,17 +91,17 @@ void main()
 {
     if (uRenderMode == RENDER_MODE_NORMAL)
     {
-        fragColor = vec4(BasisToColor(vViewNormal), 1.0);
+        fragColor = vec4(VectorToColor(vViewNormal), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_TANGENT)
     {
-        fragColor = vec4(BasisToColor(vViewTangent), 1.0);
+        fragColor = vec4(VectorToColor(vViewTangent), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_BITANGENT)
     {
-        fragColor = vec4(BasisToColor(vViewBitangent), 1.0);
+        fragColor = vec4(VectorToColor(vViewBitangent), 1.0);
         return;
     }
 
