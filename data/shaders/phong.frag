@@ -97,12 +97,14 @@ void main()
     }
     if (uRenderMode == RENDER_MODE_TANGENT)
     {
-        fragColor = vec4(VectorToColor(vViewTangent), 1.0);
+        // Raw tangent as color: negative components clamp to 0 (black).
+        fragColor = vec4(normalize(vViewTangent), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_BITANGENT)
     {
-        fragColor = vec4(VectorToColor(vViewBitangent), 1.0);
+        // Raw bitangent as color: negative components clamp to 0 (black).
+        fragColor = vec4(normalize(vViewBitangent), 1.0);
         return;
     }
 
