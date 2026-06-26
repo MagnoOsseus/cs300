@@ -98,6 +98,18 @@ static void ComputeTriangleTangentBitangent(const glm::vec3& p0,
     bitangent = SafeNormalize(glm::cross(n, tangent), glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
+static void OrthonormalizeTangentBasis(const glm::vec3& normal,
+                                       glm::vec3& tangent,
+                                       glm::vec3& bitangent)
+{
+    const glm::vec3 n = SafeNormalize(normal, glm::vec3(0.0f, 1.0f, 0.0f));
+    tangent = tangent - n * glm::dot(n, tangent);
+    tangent = SafeNormalize(tangent, glm::vec3(1.0f, 0.0f, 0.0f));
+    bitangent = bitangent - n * glm::dot(n, bitangent);
+    bitangent -= tangent * glm::dot(tangent, bitangent);
+    bitangent = SafeNormalize(bitangent, glm::cross(n, tangent));
+}
+
 // Build flat-shaded vertices.
 void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
                             std::vector<unsigned int>& idx) const
@@ -117,6 +129,7 @@ void Mesh::BuildFaceNormals(std::vector<Vertex>& verts,
         glm::vec3 t(0.0f), b(0.0f);
         ComputeTriangleTangentBitangent(tri.v[0].pos, tri.v[1].pos, tri.v[2].pos,
                                         tri.v[0].uv, tri.v[1].uv, tri.v[2].uv, t, b);
+        OrthonormalizeTangentBasis(n, t, b);
 
         // Base index for this triangle.
         auto base = static_cast<unsigned int>(verts.size());
@@ -229,12 +242,9 @@ void Mesh::BuildAveragedNormals(std::vector<Vertex>& verts,
 
     for (size_t i = 0; i < verts.size(); ++i)
     {
-        const glm::vec3 n = SafeNormalize(verts[i].normal, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::vec3 t = tangentSums[i] - n * glm::dot(n, tangentSums[i]);
-        t = SafeNormalize(t, glm::vec3(1.0f, 0.0f, 0.0f));
-        glm::vec3 b = bitangentSums[i] - n * glm::dot(n, bitangentSums[i]);
-        b -= t * glm::dot(t, b);
-        b = SafeNormalize(b, glm::cross(n, t));
+        glm::vec3 t = tangentSums[i];
+        glm::vec3 b = bitangentSums[i];
+        OrthonormalizeTangentBasis(verts[i].normal, t, b);
         verts[i].tangent = t;
         verts[i].bitangent = b;
     }
