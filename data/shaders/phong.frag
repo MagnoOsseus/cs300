@@ -39,10 +39,10 @@ uniform Light uLight[LIGHT_NUM_MAX];
 
 out vec4 fragColor;
 
-// Maps a direction vector from [-1,1] to [0,1] for color visualization.
+// Clamps a direction vector to [0,1]: negative components become black.
 vec3 VectorToColor(vec3 basis)
 {
-    return normalize(basis) * 0.5 + 0.5;
+    return max(normalize(basis), vec3(0.0));
 }
 
 float ComputeSpotFactor(Light light, vec3 lightToFragment)
