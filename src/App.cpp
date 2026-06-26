@@ -116,38 +116,24 @@ static const char* RenderModeName(int renderMode)
     }
 }
 
-// Create fallback UV texture.
+// Create black/white checkerboard diffuse texture.
 static GLuint CreateFallbackTexture()
 {
-    const int texW = 128;
-    const int texH = 128;
-    const int gridSize = 6;
+    const int texW = 256;
+    const int texH = 256;
+    const int cellSize = 32; // pixels per checker square
     std::vector<unsigned char> pixels(static_cast<size_t>(texW * texH * 3));
-
-    const glm::vec3 palette[gridSize] = {
-        glm::vec3(0.0f, 0.0f, 1.0f),
-        glm::vec3(0.0f, 1.0f, 1.0f),
-        glm::vec3(0.0f, 1.0f, 0.0f),
-        glm::vec3(1.0f, 1.0f, 0.0f),
-        glm::vec3(1.0f, 0.0f, 0.0f),
-        glm::vec3(1.0f, 0.0f, 1.0f)
-    };
 
     for (int y = 0; y < texH; ++y)
     {
         for (int x = 0; x < texW; ++x)
         {
-            float u = static_cast<float>(x) / static_cast<float>(texW - 1);
-            float v = static_cast<float>(y) / static_cast<float>(texH - 1);
-            size_t idx = static_cast<size_t>((y * texW + x) * 3);
-
-            int cellX = std::clamp(static_cast<int>(std::floor(u * static_cast<float>(gridSize))), 0, gridSize - 1);
-            int cellY = std::clamp(static_cast<int>(std::floor((1.0f - v) * static_cast<float>(gridSize))), 0, gridSize - 1);
-            const glm::vec3 color = palette[(cellX + cellY) % gridSize];
-
-            pixels[idx + 0] = static_cast<unsigned char>(color.r * 255.0f);
-            pixels[idx + 1] = static_cast<unsigned char>(color.g * 255.0f);
-            pixels[idx + 2] = static_cast<unsigned char>(color.b * 255.0f);
+            const bool white = ((x / cellSize) + (y / cellSize)) % 2 == 0;
+            const unsigned char v = white ? 255u : 0u;
+            const size_t idx = static_cast<size_t>((y * texW + x) * 3);
+            pixels[idx + 0] = v;
+            pixels[idx + 1] = v;
+            pixels[idx + 2] = v;
         }
     }
 

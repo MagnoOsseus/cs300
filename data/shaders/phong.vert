@@ -20,12 +20,15 @@ void main()
 {
     mat4 modelView = uView * uModel;
     vec4 viewPos = modelView * vec4(aPos, 1.0);
+    // Normal matrix for normals (inverse-transpose handles non-uniform scale).
     mat3 normalMat = transpose(inverse(mat3(modelView)));
+    // Tangents/bitangents are edge vectors; transform like positions.
+    mat3 modelView3 = mat3(modelView);
 
     vViewPos = viewPos.xyz;
     vViewNormal = normalize(normalMat * aNormal);
-    vViewTangent = normalize(normalMat * aTangent);
-    vViewBitangent = normalize(normalMat * aBitangent);
+    vViewTangent = normalize(modelView3 * aTangent);
+    vViewBitangent = normalize(modelView3 * aBitangent);
     vUV = aUV;
 
     gl_Position = uProj * viewPos;
