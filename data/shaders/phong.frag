@@ -4,6 +4,10 @@ const int LIGHT_NUM_MAX = 8;
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
+const int RENDER_MODE_NORMAL_MAPPING = 0;
+const int RENDER_MODE_NORMAL = 1;
+const int RENDER_MODE_TANGENT = 2;
+const int RENDER_MODE_BITANGENT = 3;
 const float MIN_EPSILON = 1e-6;
 
 struct Light
@@ -92,17 +96,17 @@ float ComputeAttenuation(Light light, float distanceToLight)
 
 void main()
 {
-    if (uRenderMode == 1)
+    if (uRenderMode == RENDER_MODE_NORMAL)
     {
         fragColor = vec4(BasisToColor(vViewNormal), 1.0);
         return;
     }
-    if (uRenderMode == 2)
+    if (uRenderMode == RENDER_MODE_TANGENT)
     {
         fragColor = vec4(BasisToColor(vViewTangent), 1.0);
         return;
     }
-    if (uRenderMode == 3)
+    if (uRenderMode == RENDER_MODE_BITANGENT)
     {
         fragColor = vec4(BasisToColor(vViewBitangent), 1.0);
         return;

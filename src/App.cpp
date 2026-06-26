@@ -28,6 +28,7 @@ static const GLsizei WIN_H = 720;
 static const float kMinLightDirectionLength = 1e-6f;
 static const float kAmbientBoost            = 0.25f;
 static const float kLightMarkerScale        = 1.2f;
+static const int kRenderModeCount           = 4;
 
 // Scene object.
 
@@ -677,7 +678,7 @@ void App::HandleEvents(bool& quit)
                 break;
 
             case SDL_SCANCODE_T:
-                m_renderMode = (m_renderMode + 1) % 4;
+                m_renderMode = (m_renderMode + 1) % kRenderModeCount;
                 std::cout << "Render mode: " << RenderModeName(m_renderMode) << '\n';
                 break;
 
