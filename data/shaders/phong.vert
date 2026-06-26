@@ -22,6 +22,7 @@ void main()
     vec4 viewPos = modelView * vec4(aPos, 1.0);
     mat3 normalMat = transpose(inverse(mat3(modelView)));
 
+    // Tangent/bitangent transform like vectors, not normals.
     mat3 mv3 = mat3(modelView);
 
     vViewPos = viewPos.xyz;

@@ -98,6 +98,7 @@ static void ComputeTriangleTangentBitangent(const glm::vec3& p0,
     bitangent = SafeNormalize(glm::cross(n, tangent), glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
+// Gram-Schmidt: make tangent and bitangent orthonormal to the given normal.
 static void OrthonormalizeTangentBasis(const glm::vec3& normal,
                                        glm::vec3& tangent,
                                        glm::vec3& bitangent)
