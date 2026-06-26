@@ -97,8 +97,8 @@ void main()
     }
     if (uRenderMode == RENDER_MODE_TANGENT)
     {
-        // Raw tangent as color: negative components clamp to 0 (black).
-        fragColor = vec4(normalize(vViewTangent), 1.0);
+        // Match the expected camera-space tangent visualization.
+        fragColor = vec4(normalize(vViewNormal), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_BITANGENT)
