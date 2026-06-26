@@ -119,7 +119,7 @@ private:
 
     // Render toggles and state.
     bool  m_showNormals   = false;
-    bool  m_faceNormals   = true;
+    bool  m_faceNormals   = false;
     bool  m_wireframe     = false;
     int   m_renderMode    = 0;
     int   m_currentSlices = 4;
