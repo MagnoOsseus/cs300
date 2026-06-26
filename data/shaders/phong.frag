@@ -4,7 +4,6 @@ const int LIGHT_NUM_MAX = 8;
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
-const int RENDER_MODE_NORMAL_MAPPING = 0;
 const int RENDER_MODE_NORMAL = 1;
 const int RENDER_MODE_TANGENT = 2;
 const int RENDER_MODE_BITANGENT = 3;
@@ -29,7 +28,6 @@ in vec3 vViewTangent;
 in vec3 vViewBitangent;
 in vec2 vUV;
 
-uniform bool uUseTexture;
 uniform sampler2D uDiffuseTexture;
 uniform bool uUseNormalMap;
 uniform sampler2D uNormalTexture;
@@ -40,11 +38,6 @@ uniform int uLightNum;
 uniform Light uLight[LIGHT_NUM_MAX];
 
 out vec4 fragColor;
-
-vec3 UVColor(vec2 uv)
-{
-    return vec3(clamp(uv.x, 0.0, 1.0), clamp(uv.y, 0.0, 1.0), 0.0);
-}
 
 vec3 BasisToColor(vec3 basis)
 {
@@ -112,7 +105,7 @@ void main()
         return;
     }
 
-    vec3 baseColor = uUseTexture ? texture(uDiffuseTexture, vUV).rgb : UVColor(vUV);
+    vec3 baseColor = texture(uDiffuseTexture, vUV).rgb;
     if (uLightNum <= 0)
     {
         fragColor = vec4(baseColor, 1.0);

@@ -105,7 +105,6 @@ private:
     GLint m_uModel        = -1;
     GLint m_uView         = -1;
     GLint m_uProj         = -1;
-    GLint m_uUseTexture   = -1;
     GLint m_uDiffuseTex   = -1;
     GLint m_uUseNormalMap = -1;
     GLint m_uNormalTex    = -1;

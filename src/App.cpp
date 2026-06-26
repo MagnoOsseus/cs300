@@ -484,7 +484,6 @@ void App::SetupShaders()
     m_uModel        = glGetUniformLocation(m_mainProg, "uModel");
     m_uView         = glGetUniformLocation(m_mainProg, "uView");
     m_uProj         = glGetUniformLocation(m_mainProg, "uProj");
-    m_uUseTexture   = glGetUniformLocation(m_mainProg, "uUseTexture");
     m_uDiffuseTex   = glGetUniformLocation(m_mainProg, "uDiffuseTexture");
     m_uUseNormalMap = glGetUniformLocation(m_mainProg, "uUseNormalMap");
     m_uNormalTex    = glGetUniformLocation(m_mainProg, "uNormalTexture");
@@ -769,7 +768,6 @@ void App::RenderFrame()
 
         glm::mat4 M = obj.ModelMatrix();
         glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(M));
-        glUniform1i(m_uUseTexture,   1);
         glUniform1i(m_uUseNormalMap, obj.material.hasNormalMap ? 1 : 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTexture);
@@ -804,14 +802,12 @@ void App::RenderFrame()
         glUseProgram(m_mainProg);
         glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(V));
         glUniformMatrix4fv(m_uProj, 1, GL_FALSE, glm::value_ptr(P));
-        glUniform1i(m_uRenderMode, m_renderMode);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_whiteTex);
         glUniform1i(m_uDiffuseTex, 0);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, m_defaultNormalTex);
         glUniform1i(m_uNormalTex, 1);
-        glUniform1i(m_uUseTexture,   1);
         glUniform1i(m_uUseNormalMap, 0);
         glUniform1f(m_uShininess,    64.0f);
 
