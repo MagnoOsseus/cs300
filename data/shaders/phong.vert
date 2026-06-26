@@ -22,10 +22,12 @@ void main()
     vec4 viewPos = modelView * vec4(aPos, 1.0);
     mat3 normalMat = transpose(inverse(mat3(modelView)));
 
+    mat3 mv3 = mat3(modelView);
+
     vViewPos = viewPos.xyz;
     vViewNormal = normalize(normalMat * aNormal);
-    vViewTangent = normalize(normalMat * aTangent);
-    vViewBitangent = normalize(normalMat * aBitangent);
+    vViewTangent = normalize(mv3 * aTangent);
+    vViewBitangent = normalize(mv3 * aBitangent);
     vUV = aUV;
 
     gl_Position = uProj * viewPos;
