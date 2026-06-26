@@ -29,6 +29,7 @@ uniform bool uUseTexture;
 uniform sampler2D uDiffuseTexture;
 uniform bool uUseNormalMap;
 uniform sampler2D uNormalTexture;
+uniform int uRenderMode;
 uniform float uShininess;
 uniform float uAmbientBoost;
 uniform int uLightNum;
@@ -39,6 +40,11 @@ out vec4 fragColor;
 vec3 UVColor(vec2 uv)
 {
     return vec3(clamp(uv.x, 0.0, 1.0), clamp(uv.y, 0.0, 1.0), 0.0);
+}
+
+vec3 BasisToColor(vec3 basis)
+{
+    return normalize(basis) * 0.5 + 0.5;
 }
 
 float ComputeSpotFactor(Light light, vec3 lightToFragment)
@@ -86,6 +92,22 @@ float ComputeAttenuation(Light light, float distanceToLight)
 
 void main()
 {
+    if (uRenderMode == 1)
+    {
+        fragColor = vec4(BasisToColor(vViewNormal), 1.0);
+        return;
+    }
+    if (uRenderMode == 2)
+    {
+        fragColor = vec4(BasisToColor(vViewTangent), 1.0);
+        return;
+    }
+    if (uRenderMode == 3)
+    {
+        fragColor = vec4(BasisToColor(vViewBitangent), 1.0);
+        return;
+    }
+
     vec3 baseColor = uUseTexture ? texture(uDiffuseTexture, vUV).rgb : UVColor(vUV);
     if (uLightNum <= 0)
     {

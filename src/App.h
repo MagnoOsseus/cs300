@@ -109,6 +109,7 @@ private:
     GLint m_uDiffuseTex   = -1;
     GLint m_uUseNormalMap = -1;
     GLint m_uNormalTex    = -1;
+    GLint m_uRenderMode   = -1;
     GLint m_uShininess    = -1;
     GLint m_uAmbientBoost = -1;
     GLint m_uLightNum     = -1;
@@ -120,8 +121,8 @@ private:
     // Render toggles and state.
     bool  m_showNormals   = false;
     bool  m_faceNormals   = true;
-    bool  m_textureMode   = false;
     bool  m_wireframe     = false;
+    int   m_renderMode    = 0;
     int   m_currentSlices = 4;
     float m_elapsedTime   = 0.0f;
 };

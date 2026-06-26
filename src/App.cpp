@@ -98,6 +98,17 @@ static int ToShaderLightType(CS300Parser::LightType type)
     }
 }
 
+static const char* RenderModeName(int renderMode)
+{
+    switch (renderMode)
+    {
+    case 1:  return "NORMAL";
+    case 2:  return "TANGENT";
+    case 3:  return "BITANGENT";
+    default: return "NORMAL MAPPING";
+    }
+}
+
 // Create fallback UV texture.
 static GLuint CreateFallbackTexture()
 {
@@ -476,6 +487,7 @@ void App::SetupShaders()
     m_uDiffuseTex   = glGetUniformLocation(m_mainProg, "uDiffuseTexture");
     m_uUseNormalMap = glGetUniformLocation(m_mainProg, "uUseNormalMap");
     m_uNormalTex    = glGetUniformLocation(m_mainProg, "uNormalTexture");
+    m_uRenderMode   = glGetUniformLocation(m_mainProg, "uRenderMode");
     m_uShininess    = glGetUniformLocation(m_mainProg, "uShininess");
     m_uAmbientBoost = glGetUniformLocation(m_mainProg, "uAmbientBoost");
     m_uLightNum     = glGetUniformLocation(m_mainProg, "uLightNum");
@@ -665,8 +677,8 @@ void App::HandleEvents(bool& quit)
                 break;
 
             case SDL_SCANCODE_T:
-                m_textureMode = !m_textureMode;
-                std::cout << "Texture mode: " << (m_textureMode ? "ON" : "OFF") << '\n';
+                m_renderMode = (m_renderMode + 1) % 4;
+                std::cout << "Render mode: " << RenderModeName(m_renderMode) << '\n';
                 break;
 
             case SDL_SCANCODE_EQUALS:
@@ -704,6 +716,7 @@ void App::RenderFrame()
     glUseProgram(m_mainProg);
     glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(V));
     glUniformMatrix4fv(m_uProj, 1, GL_FALSE, glm::value_ptr(P));
+    glUniform1i(m_uRenderMode, m_renderMode);
 
     const int activeLightCount = std::min<int>(static_cast<int>(m_scene.lights.size()), kMaxLights);
     glUniform1i(m_uLightNum, activeLightCount);
@@ -755,7 +768,7 @@ void App::RenderFrame()
 
         glm::mat4 M = obj.ModelMatrix();
         glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(M));
-        glUniform1i(m_uUseTexture,   m_textureMode ? 1 : 0);
+        glUniform1i(m_uUseTexture,   1);
         glUniform1i(m_uUseNormalMap, obj.material.hasNormalMap ? 1 : 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTexture);
@@ -790,6 +803,7 @@ void App::RenderFrame()
         glUseProgram(m_mainProg);
         glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(V));
         glUniformMatrix4fv(m_uProj, 1, GL_FALSE, glm::value_ptr(P));
+        glUniform1i(m_uRenderMode, m_renderMode);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_whiteTex);
         glUniform1i(m_uDiffuseTex, 0);
