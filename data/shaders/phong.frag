@@ -91,19 +91,19 @@ void main()
 {
     if (uRenderMode == RENDER_MODE_NORMAL)
     {
-        // Raw normal as color: negative components clamp to 0 (black).
+        // Show the camera-space normal directly.
         fragColor = vec4(normalize(vViewNormal), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_TANGENT)
     {
-        // Match the expected camera-space tangent visualization.
-        fragColor = vec4(normalize(vViewNormal), 1.0);
+        // Show the camera-space tangent directly.
+        fragColor = vec4(normalize(vViewTangent), 1.0);
         return;
     }
     if (uRenderMode == RENDER_MODE_BITANGENT)
     {
-        // Raw bitangent as color: negative components clamp to 0 (black).
+        // Show the camera-space bitangent directly.
         fragColor = vec4(normalize(vViewBitangent), 1.0);
         return;
     }
