@@ -437,7 +437,8 @@ void main()
 {
     const float previewContrastBoost = 12.0;
     float depth = texture(uPreviewTex, vUV).r;
-    float preview = clamp(depth * previewContrastBoost, 0.0, 1.0);
+    float contrastDepth = clamp((1.0 - depth) * previewContrastBoost, 0.0, 1.0);
+    float preview = 1.0 - contrastDepth;
     fragColor = vec4(vec3(preview), 1.0);
 }
 )glsl";
