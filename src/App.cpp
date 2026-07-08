@@ -436,7 +436,7 @@ out vec4 fragColor;
 void main()
 {
     float depth = texture(uPreviewTex, vUV).r;
-    float preview = clamp((1.0 - depth) * 12.0, 0.0, 1.0);
+    float preview = clamp(depth * 12.0, 0.0, 1.0);
     fragColor = vec4(vec3(preview), 1.0);
 }
 )glsl";
