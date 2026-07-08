@@ -435,9 +435,9 @@ uniform sampler2D uPreviewTex;
 out vec4 fragColor;
 void main()
 {
-    const float kPreviewContrastBoost = 12.0;
+    const float previewContrastBoost = 12.0;
     float depth = texture(uPreviewTex, vUV).r;
-    float preview = clamp(depth * kPreviewContrastBoost, 0.0, 1.0);
+    float preview = clamp(depth * previewContrastBoost, 0.0, 1.0);
     fragColor = vec4(vec3(preview), 1.0);
 }
 )glsl";
