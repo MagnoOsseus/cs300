@@ -15,6 +15,7 @@ out vec3 vViewNormal;
 out vec3 vViewTangent;
 out vec3 vViewBitangent;
 out vec2 vUV;
+out vec3 vWorldPos; // World-space position for shadow mapping.
 
 void main()
 {
@@ -30,6 +31,8 @@ void main()
     vViewTangent = normalize(mv3 * aTangent);
     vViewBitangent = normalize(mv3 * aBitangent);
     vUV = aUV;
+    vWorldPos = vec3(uModel * vec4(aPos, 1.0));
 
     gl_Position = uProj * viewPos;
 }
+

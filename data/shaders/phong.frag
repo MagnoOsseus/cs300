@@ -27,15 +27,25 @@ in vec3 vViewNormal;
 in vec3 vViewTangent;
 in vec3 vViewBitangent;
 in vec2 vUV;
+in vec3 vWorldPos; // World-space position for shadow test.
 
 uniform sampler2D uDiffuseTexture;
+// Normal mapping disabled for A3 (kept for code preservation).
 uniform bool uUseNormalMap;
 uniform sampler2D uNormalTexture;
 uniform int uRenderMode;
 uniform float uShininess;
 uniform float uAmbientBoost;
+// Only light[0] is used for A3; multiple-light loop kept but capped at 1.
 uniform int uLightNum;
 uniform Light uLight[LIGHT_NUM_MAX];
+
+// Shadow map uniforms.
+uniform sampler2D uShadowMap;    // Depth texture from light pass.
+uniform mat4 uLightVP;           // LP * LV combined matrix.
+uniform float uShadowBias;       // Bias read from scene (avoids acne).
+uniform int uPcfRadius;          // PCF kernel half-size from scene.
+uniform bool uShadowsEnabled;    // Toggled with T key.
 
 out vec4 fragColor;
 
@@ -88,6 +98,50 @@ float ComputeAttenuation(Light light, float distanceToLight)
     return min(1.0 / denom, 1.0);
 }
 
+// PCF shadow factor: 1.0 = fully lit, 0.0 = fully shadowed.
+float ComputeShadow(vec3 worldPos)
+{
+    if (!uShadowsEnabled)
+    {
+        return 1.0;
+    }
+
+    // Transform world position into light clip space.
+    vec4 lightClip = uLightVP * vec4(worldPos, 1.0);
+
+    // Perspective divide to get NDC [-1,1].
+    vec3 ndc = lightClip.xyz / lightClip.w;
+
+    // Map NDC to shadow map texture coords [0,1].
+    vec3 tc = ndc * 0.5 + 0.5;
+
+    // Fragments outside the shadow frustum are fully lit.
+    if (tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0 || tc.z > 1.0)
+    {
+        return 1.0;
+    }
+
+    float fragDepth = tc.z - uShadowBias;
+
+    // PCF: sample (2*uPcfRadius+1)^2 neighbours and average.
+    vec2 texelSize = 1.0 / vec2(textureSize(uShadowMap, 0));
+    float shadow = 0.0;
+    int count = 0;
+
+    for (int x = -uPcfRadius; x <= uPcfRadius; ++x)
+    {
+        for (int y = -uPcfRadius; y <= uPcfRadius; ++y)
+        {
+            float storedDepth = texture(uShadowMap, tc.xy + vec2(x, y) * texelSize).r;
+            // 1.0 if lit (fragment not behind stored depth), 0.0 if shadowed.
+            shadow += (fragDepth <= storedDepth) ? 1.0 : 0.0;
+            ++count;
+        }
+    }
+
+    return shadow / float(count);
+}
+
 void main()
 {
     if (uRenderMode == RENDER_MODE_NORMAL)
@@ -121,10 +175,16 @@ void main()
     vec3 B = normalize(vViewBitangent);
     mat3 TBN = mat3(T, B, NBase);
     vec3 mapNormal = texture(uNormalTexture, vUV).rgb * 2.0 - 1.0;
+    // Normal mapping disabled for A3; uUseNormalMap is always false.
     vec3 N = uUseNormalMap ? normalize(TBN * mapNormal) : NBase;
     vec3 V = normalize(-vViewPos);
     vec3 finalColor = vec3(0.0);
 
+    // Compute shadow factor once for light[0] (A3 uses only one light).
+    // Each additional light would need its own shadow map in a multi-light setup.
+    float shadowFactor = ComputeShadow(vWorldPos);
+
+    // Only light[0] is active for A3 (uLightNum capped to 1 on CPU).
     for (int i = 0; i < uLightNum; ++i)
     {
         Light light = uLight[i];
@@ -147,8 +207,11 @@ void main()
         }
 
         float NdotL = max(dot(N, L), 0.0);
+        // Ambient coefficient is 1 per assignment; ambient unaffected by shadow.
         float ambientStrength = max(light.ambient, 0.0) + uAmbientBoost;
         vec3 ambientTerm = ambientStrength * baseColor * light.color;
+
+        // Diffuse term.
         vec3 diffuseTerm = light.color * baseColor * NdotL;
 
         vec3 specularTerm = vec3(0.0);
@@ -156,6 +219,7 @@ void main()
         {
             vec3 R = normalize(2.0 * dot(N, L) * N - L);
             float spec = pow(max(dot(R, V), 0.0), max(uShininess, 1.0));
+            // Specular color is white per assignment (specular = vec3(1.0)).
             specularTerm = light.color * vec3(1.0) * spec;
         }
 
@@ -164,9 +228,13 @@ void main()
         float spotFactor = ComputeSpotFactor(light, lightToFragment);
 
         float lightScale = (light.type == LIGHT_TYPE_SPOT) ? spotFactor : 1.0;
-        vec3 contribution = attenuation * lightScale * (ambientTerm + diffuseTerm + specularTerm);
+
+        // Shadow only modulates diffuse and specular; ambient is always present.
+        vec3 contribution = attenuation * lightScale *
+            (ambientTerm + shadowFactor * (diffuseTerm + specularTerm));
         finalColor += contribution;
     }
 
     fragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
 }
+

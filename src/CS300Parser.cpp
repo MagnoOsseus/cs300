@@ -257,6 +257,22 @@ void CS300Parser::LoadDataFromFile(const char * filename)
                 lights.back().outerAngleCos = std::cos(glm::radians(spotAtt.y));
             }
         }
+        else if (id == "bias")
+        {
+            float bias = ReadFloat(inFile);
+            if (last == LastAdded::LIGHT && lights.size() > 0)
+            {
+                lights.back().bias = bias;
+            }
+        }
+        else if (id == "pcf")
+        {
+            float pcfVal = ReadFloat(inFile);
+            if (last == LastAdded::LIGHT && lights.size() > 0)
+            {
+                lights.back().pcf = static_cast<int>(pcfVal);
+            }
+        }
         else if (Animations::NameToUpdater.find(id) != Animations::NameToUpdater.end())
         {
             glm::vec3 param = ReadVec3(inFile);

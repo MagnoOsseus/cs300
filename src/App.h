@@ -18,6 +18,9 @@
 
 static const int kMaxLights = 8;
 
+// Shadow map texture resolution.
+static const GLsizei kShadowMapSize = 2048;
+
 // Mesh type per scene object.
 enum class MeshKind { PLANE, CUBE, CONE, CYLINDER, SPHERE, OBJ };
 
@@ -77,10 +80,13 @@ public:
 private:
     void LoadScene();
     void SetupShaders();
+    void SetupShadowMap();
     void RebuildSlicedMeshes();
     void UpdateAnimations(float elapsedTime);
     void HandleEvents(bool& quit);
     void RenderFrame();
+    void RenderDepthPass(const glm::mat4& LV, const glm::mat4& LP);
+    void DrawShadowMapPreview();
 
     SDL_Window*   m_window = nullptr;
     SDL_GLContext m_glCtx  = nullptr;
@@ -101,6 +107,19 @@ private:
     GLuint m_mainProg = 0;
     GLuint m_normProg = 0;
 
+    // Depth-pass program for shadow map generation.
+    GLuint m_depthProg    = 0;
+    GLint  m_uDepthMVP    = -1;
+
+    // Preview program (draws shadow map in a corner).
+    GLuint m_previewProg  = 0;
+    GLint  m_uPreviewTex  = -1;
+    GLuint m_dummyVAO     = 0; // VAO for procedural quad draw.
+
+    // Shadow map FBO and depth texture.
+    GLuint m_shadowFBO      = 0;
+    GLuint m_shadowDepthTex = 0;
+
     // Main shader uniforms.
     GLint m_uModel        = -1;
     GLint m_uView         = -1;
@@ -115,13 +134,21 @@ private:
     // Normals shader uniform.
     GLint m_uNormMVP = -1;
 
+    // Shadow uniforms in phong.
+    GLint m_uShadowMap      = -1;
+    GLint m_uLightVP        = -1;
+    GLint m_uShadowBias     = -1;
+    GLint m_uPcfRadius      = -1;
+    GLint m_uShadowsEnabled = -1;
+
     std::array<LightUniformLoc, kMaxLights> m_lightUniforms{};
 
     // Render toggles and state.
-    bool  m_showNormals   = false;
-    bool  m_faceNormals   = false;
-    bool  m_wireframe     = false;
-    int   m_renderMode    = 0;
-    int   m_currentSlices = 4;
-    float m_elapsedTime   = 0.0f;
+    bool  m_showNormals    = false;
+    bool  m_faceNormals    = false;
+    bool  m_wireframe      = false;
+    bool  m_shadowsEnabled = true;
+    int   m_renderMode     = 0;
+    int   m_currentSlices  = 4;
+    float m_elapsedTime    = 0.0f;
 };
