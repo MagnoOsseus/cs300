@@ -6,7 +6,7 @@
 // Program entry point.
 int main(int argc, char * argv[])
 {
-    std::string sceneFileStr = (argc > 1) ? argv[1] : "data/scenes/scene_A2.txt";
+    std::string sceneFileStr = (argc > 1) ? argv[1] : "data/scenes/scene_A3.txt";
     // Use data/scenes/ when only a file name is passed.
     if (argc > 1 && sceneFileStr.find('/') == std::string::npos && sceneFileStr.find('\\') == std::string::npos)
     {

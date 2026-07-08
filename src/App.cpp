@@ -26,7 +26,7 @@ static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 
 static const float kMinLightDirectionLength = 1e-6f;
-static const float kAmbientBoost            = 0.25f;
+static const float kAmbientBoost            = 0.05f;
 static const float kLightMarkerScale        = 1.2f;
 static const int kRenderModeNormalMapping   = 0;
 static const int kRenderModeNormal          = 1;
@@ -401,6 +401,76 @@ void main()
     return prog;
 }
 
+// Build shader used to preview the shadow map in the corner.
+static GLuint CreateShadowPreviewProgram()
+{
+    // Generates a fullscreen quad from vertex ID; no VBO needed.
+    static const char * kPreviewVert = R"glsl(
+#version 430 core
+const vec2 kPos[4] = vec2[4](
+    vec2(-1.0, -1.0),
+    vec2( 1.0, -1.0),
+    vec2(-1.0,  1.0),
+    vec2( 1.0,  1.0)
+);
+const vec2 kUV[4] = vec2[4](
+    vec2(0.0, 0.0),
+    vec2(1.0, 0.0),
+    vec2(0.0, 1.0),
+    vec2(1.0, 1.0)
+);
+out vec2 vUV;
+void main()
+{
+    vUV = kUV[gl_VertexID];
+    gl_Position = vec4(kPos[gl_VertexID], 0.0, 1.0);
+}
+)glsl";
+
+    // Display depth with boosted contrast so the shadow shape is visible.
+    static const char * kPreviewFrag = R"glsl(
+#version 430 core
+in vec2 vUV;
+uniform sampler2D uPreviewTex;
+out vec4 fragColor;
+void main()
+{
+    const float previewContrastBoost = 100.0;
+    float depth = texture(uPreviewTex, vUV).r;
+    float contrastDepth = clamp((1.0 - depth) * previewContrastBoost, 0.0, 1.0);
+    float preview = 1.0 - contrastDepth;
+    fragColor = vec4(vec3(preview), 1.0);
+}
+)glsl";
+
+    GLuint vs = CompileShaderFromSource(GL_VERTEX_SHADER, kPreviewVert);
+    if (vs == 0) return 0;
+
+    GLuint fs = CompileShaderFromSource(GL_FRAGMENT_SHADER, kPreviewFrag);
+    if (fs == 0) { glDeleteShader(vs); return 0; }
+
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs);
+    glAttachShader(prog, fs);
+    glLinkProgram(prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    GLint linked = GL_FALSE;
+    glGetProgramiv(prog, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE)
+    {
+        GLint logLen = 0;
+        glGetProgramiv(prog, GL_INFO_LOG_LENGTH, &logLen);
+        std::vector<char> log(static_cast<size_t>(std::max(1, logLen)));
+        glGetProgramInfoLog(prog, logLen, nullptr, log.data());
+        std::cerr << "Preview program link error:\n" << log.data() << '\n';
+        glDeleteProgram(prog);
+        return 0;
+    }
+    return prog;
+}
+
 // App methods.
 
 bool App::Init(const char* sceneFile)
@@ -466,6 +536,7 @@ bool App::Init(const char* sceneFile)
 
     SetupShaders();
     LoadScene();
+    SetupShadowMap();
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -478,14 +549,16 @@ bool App::Init(const char* sceneFile)
 void App::SetupShaders()
 {
     if (!m_shaderManager.LoadProgram("main",    "data/shaders/phong.vert",   "data/shaders/phong.frag") ||
-        !m_shaderManager.LoadProgram("normals", "data/shaders/normals.vert", "data/shaders/normals.frag"))
+        !m_shaderManager.LoadProgram("normals", "data/shaders/normals.vert", "data/shaders/normals.frag") ||
+        !m_shaderManager.LoadProgram("depth",   "data/shaders/depth.vert",   "data/shaders/depth.frag"))
     {
         std::cerr << "Failed to load shader programs.\n";
         return;
     }
 
-    m_mainProg = m_shaderManager.GetProgram("main");
-    m_normProg = m_shaderManager.GetProgram("normals");
+    m_mainProg  = m_shaderManager.GetProgram("main");
+    m_normProg  = m_shaderManager.GetProgram("normals");
+    m_depthProg = m_shaderManager.GetProgram("depth");
 
     m_uModel        = glGetUniformLocation(m_mainProg, "uModel");
     m_uView         = glGetUniformLocation(m_mainProg, "uView");
@@ -497,6 +570,16 @@ void App::SetupShaders()
     m_uShininess    = glGetUniformLocation(m_mainProg, "uShininess");
     m_uAmbientBoost = glGetUniformLocation(m_mainProg, "uAmbientBoost");
     m_uLightNum     = glGetUniformLocation(m_mainProg, "uLightNum");
+
+    // Shadow map uniforms in phong.
+    m_uShadowMap      = glGetUniformLocation(m_mainProg, "uShadowMap");
+    m_uLightVP        = glGetUniformLocation(m_mainProg, "uLightVP");
+    m_uShadowBias     = glGetUniformLocation(m_mainProg, "uShadowBias");
+    m_uPcfRadius      = glGetUniformLocation(m_mainProg, "uPcfRadius");
+    m_uShadowsEnabled = glGetUniformLocation(m_mainProg, "uShadowsEnabled");
+
+    // Depth pass uniform.
+    m_uDepthMVP = glGetUniformLocation(m_depthProg, "uLightMVP");
 
     for (int i = 0; i < kMaxLights; ++i)
     {
@@ -513,6 +596,13 @@ void App::SetupShaders()
     }
 
     m_uNormMVP = glGetUniformLocation(m_normProg, "uMVP");
+
+    // Shadow map preview program (fullscreen quad, no VBO needed).
+    m_previewProg = CreateShadowPreviewProgram();
+    m_uPreviewTex = glGetUniformLocation(m_previewProg, "uPreviewTex");
+
+    // Dummy VAO for the procedural quad draw.
+    glGenVertexArrays(1, &m_dummyVAO);
 }
 
 // Build scene objects and upload assets.
@@ -607,6 +697,40 @@ void App::LoadScene()
     }
 }
 
+// Create depth-only FBO and texture for shadow mapping.
+void App::SetupShadowMap()
+{
+    // Create the depth texture.
+    glGenTextures(1, &m_shadowDepthTex);
+    glBindTexture(GL_TEXTURE_2D, m_shadowDepthTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
+                 kShadowMapSize, kShadowMapSize, 0,
+                 GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // Clamp to border: areas outside the frustum sample depth=1 (fully lit).
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    const float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Create FBO with only a depth attachment (no colour buffer needed).
+    glGenFramebuffers(1, &m_shadowFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                           GL_TEXTURE_2D, m_shadowDepthTex, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cerr << "Shadow map FBO is incomplete!\n";
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 // Rebuild meshes that use slice count.
 void App::RebuildSlicedMeshes()
 {
@@ -668,6 +792,11 @@ void App::HandleEvents(bool& quit)
                 std::cout << "Normals: " << (m_showNormals ? "ON" : "OFF") << '\n';
                 break;
 
+            case SDL_SCANCODE_P:
+                m_pauseAnimation = !m_pauseAnimation;
+                std::cout << "Animation: " << (m_pauseAnimation ? "PAUSED" : "RUNNING") << '\n';
+                break;
+
             case SDL_SCANCODE_F:
                 m_faceNormals = !m_faceNormals;
                 for (auto & o : m_objects)
@@ -683,8 +812,8 @@ void App::HandleEvents(bool& quit)
                 break;
 
             case SDL_SCANCODE_T:
-                m_renderMode = (m_renderMode + 1) % kRenderModeCount;
-                std::cout << "Render mode: " << RenderModeName(m_renderMode) << '\n';
+                m_shadowsEnabled = !m_shadowsEnabled;
+                std::cout << "Shadows: " << (m_shadowsEnabled ? "ON" : "OFF") << '\n';
                 break;
 
             case SDL_SCANCODE_EQUALS:
@@ -708,6 +837,57 @@ void App::HandleEvents(bool& quit)
     }
 }
 
+// First pass: render scene depth from the light into the shadow FBO.
+void App::RenderDepthPass(const glm::mat4& LV, const glm::mat4& LP)
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
+    glViewport(0, 0, kShadowMapSize, kShadowMapSize);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    // Cull front faces in depth pass to reduce shadow acne.
+    glCullFace(GL_FRONT);
+
+    glUseProgram(m_depthProg);
+
+    // Render each object with its light-space MVP.
+    for (const auto& obj : m_objects)
+    {
+        if (!obj.mesh.IsValid()) continue;
+        glm::mat4 lightMVP = LP * LV * obj.ModelMatrix();
+        glUniformMatrix4fv(m_uDepthMVP, 1, GL_FALSE, glm::value_ptr(lightMVP));
+        obj.mesh.Draw();
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glCullFace(GL_BACK);
+}
+
+// Draw the shadow depth texture in a small preview in the bottom-left corner.
+void App::DrawShadowMapPreview()
+{
+    // 256x256 preview in the bottom-left.
+    const GLsizei prevW = 256;
+    const GLsizei prevH = 256;
+    glViewport(0, 0, prevW, prevH);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // Ensure fill mode for preview quad.
+
+    glDisable(GL_DEPTH_TEST);
+
+    glUseProgram(m_previewProg);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_shadowDepthTex);
+    glUniform1i(m_uPreviewTex, 0);
+
+    // Draw fullscreen quad using vertex IDs (no VBO needed).
+    glBindVertexArray(m_dummyVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST);
+    // Restore viewport and polygon mode for next frame.
+    glViewport(0, 0, WIN_W, WIN_H);
+    glPolygonMode(GL_FRONT_AND_BACK, m_wireframe ? GL_LINE : GL_FILL);
+}
+
 // Draw scene, normals, and light markers.
 void App::RenderFrame()
 {
@@ -715,6 +895,49 @@ void App::RenderFrame()
     const glm::mat4 P = m_camera.GetProjection();
     const glm::mat3 viewRotation = glm::mat3(V);
 
+    // Only the first light is active for A3 (multiple lights disabled).
+    const int activeLightCount = (m_scene.lights.empty()) ? 0 : 1;
+
+    // Build light matrices from light[0] when available.
+    glm::mat4 LV(1.0f);
+    glm::mat4 LP(1.0f);
+    glm::mat4 LVP(1.0f); // LP * LV combined for shadow test.
+
+    if (activeLightCount > 0)
+    {
+        const auto& light = m_scene.lights[0];
+        const glm::vec3& lightPos = m_lightCurrPos[0];
+
+        glm::vec3 lightDir = light.direction;
+        if (glm::length(lightDir) < kMinLightDirectionLength)
+            lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
+        else
+            lightDir = glm::normalize(lightDir);
+
+        // Choose an up vector not parallel to the light direction.
+        glm::vec3 upVec = (std::abs(glm::dot(lightDir, glm::vec3(0.0f, 1.0f, 0.0f))) > 0.99f)
+                          ? glm::vec3(1.0f, 0.0f, 0.0f)
+                          : glm::vec3(0.0f, 1.0f, 0.0f);
+
+        LV = glm::lookAt(lightPos, lightPos + lightDir, upVec);
+
+        // Perspective projection using the spotlight outer angle as half-FOV.
+        const float lightFovDeg = 2.0f * light.outerAngle;
+        LP = glm::perspective(glm::radians(lightFovDeg), 1.0f,
+                              m_scene.nearPlane, m_scene.farPlane);
+
+        LVP = LP * LV;
+    }
+
+    // ---- First pass: render depth from the light ----
+    if (activeLightCount > 0)
+    {
+        RenderDepthPass(LV, LP);
+    }
+
+    // ---- Second pass: render from the camera ----
+    glCullFace(GL_BACK);
+    glViewport(0, 0, WIN_W, WIN_H);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glPolygonMode(GL_FRONT_AND_BACK, m_wireframe ? GL_LINE : GL_FILL);
@@ -723,25 +946,34 @@ void App::RenderFrame()
     glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(V));
     glUniformMatrix4fv(m_uProj, 1, GL_FALSE, glm::value_ptr(P));
     glUniform1i(m_uRenderMode, m_renderMode);
-
-    const int activeLightCount = std::min<int>(static_cast<int>(m_scene.lights.size()), kMaxLights);
     glUniform1i(m_uLightNum, activeLightCount);
     glUniform1f(m_uAmbientBoost, kAmbientBoost);
 
-    // Upload all light uniforms.
+    // Bind shadow map to texture unit 2.
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_shadowDepthTex);
+    glUniform1i(m_uShadowMap, 2);
+
+    // Upload shadow parameters from scene light[0].
+    if (activeLightCount > 0)
+    {
+        const auto& light0 = m_scene.lights[0];
+        glUniformMatrix4fv(m_uLightVP, 1, GL_FALSE, glm::value_ptr(LVP));
+        glUniform1f(m_uShadowBias, light0.bias);
+        glUniform1i(m_uPcfRadius,  light0.pcf);
+    }
+    glUniform1i(m_uShadowsEnabled, m_shadowsEnabled ? 1 : 0);
+
+    // Upload light[0] uniforms (multiple lights disabled).
     for (int i = 0; i < activeLightCount; ++i)
     {
-        const auto & light = m_scene.lights[static_cast<size_t>(i)];
+        const auto& light = m_scene.lights[static_cast<size_t>(i)];
 
         glm::vec3 lightDir = light.direction;
         if (glm::length(lightDir) < kMinLightDirectionLength)
-        {
             lightDir = glm::vec3(0.0f, -1.0f, 0.0f);
-        }
         else
-        {
             lightDir = glm::normalize(lightDir);
-        }
 
         const glm::vec3 viewLightPos = glm::vec3(V * glm::vec4(m_lightCurrPos[static_cast<size_t>(i)], 1.0f));
         const glm::vec3 viewLightDir = glm::normalize(viewRotation * lightDir);
@@ -765,16 +997,14 @@ void App::RenderFrame()
     glUniform1i(m_uNormalTex, 1);
 
     // Draw objects.
-    for (const auto & obj : m_objects)
+    for (const auto& obj : m_objects)
     {
-        if (!obj.mesh.IsValid())
-        {
-            continue;
-        }
+        if (!obj.mesh.IsValid()) continue;
 
         glm::mat4 M = obj.ModelMatrix();
         glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(M));
-        glUniform1i(m_uUseNormalMap, obj.material.hasNormalMap ? 1 : 0);
+        // Normal mapping system is preserved but bypassed for A3 output.
+        glUniform1i(m_uUseNormalMap, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTexture);
         glActiveTexture(GL_TEXTURE1);
@@ -789,12 +1019,9 @@ void App::RenderFrame()
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glUseProgram(m_normProg);
 
-        for (const auto & obj : m_objects)
+        for (const auto& obj : m_objects)
         {
-            if (!obj.mesh.HasNormals())
-            {
-                continue;
-            }
+            if (!obj.mesh.HasNormals()) continue;
 
             glm::mat4 MVP = P * V * obj.ModelMatrix();
             glUniformMatrix4fv(m_uNormMVP, 1, GL_FALSE, glm::value_ptr(MVP));
@@ -826,9 +1053,11 @@ void App::RenderFrame()
         glUniform3fv(m_lightUniforms[0].color,      1, glm::value_ptr(glm::vec3(1.0f)));
         glUniform1f(m_lightUniforms[0].ambient,       1.0f);
         glUniform3fv(m_lightUniforms[0].attenuation,1, glm::value_ptr(glm::vec3(1.0f, 0.0f, 0.0f)));
-        glUniform1f(m_lightUniforms[0].innerAngleCos, 1.0f);  // Spot inner cosine.
-        glUniform1f(m_lightUniforms[0].outerAngleCos,-1.0f);  // Spot outer cosine.
+        glUniform1f(m_lightUniforms[0].innerAngleCos, 1.0f);
+        glUniform1f(m_lightUniforms[0].outerAngleCos,-1.0f);
         glUniform1f(m_lightUniforms[0].falloff,       1.0f);
+        // Disable shadows for light markers.
+        glUniform1i(m_uShadowsEnabled, 0);
 
         for (int i = 0; i < activeLightCount; ++i)
         {
@@ -838,11 +1067,10 @@ void App::RenderFrame()
             glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(markerModel));
             m_lightMarkerMesh.Draw();
         }
-
-        // Restore scene lights.
-        glUniform1i(m_uLightNum,     activeLightCount);
-        glUniform1f(m_uAmbientBoost, kAmbientBoost);
     }
+
+    // Shadow map preview in bottom-left corner.
+    DrawShadowMapPreview();
 
     glUseProgram(0);
     SDL_GL_SwapWindow(m_window);
@@ -859,7 +1087,10 @@ void App::Run()
         const Uint64 nowTick = SDL_GetTicks();
         const float  dt      = static_cast<float>(nowTick - prevTick) * 0.001f;
         prevTick = nowTick;
-        m_elapsedTime += dt;
+        if (!m_pauseAnimation)
+        {
+            m_elapsedTime += dt;
+        }
 
         HandleEvents(quit);
         m_camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);
@@ -889,6 +1120,12 @@ void App::Shutdown()
     }
 
     m_lightMarkerMesh.Free();
+
+    // Release shadow map resources.
+    glDeleteFramebuffers(1, &m_shadowFBO);
+    glDeleteTextures(1, &m_shadowDepthTex);
+    if (m_previewProg != 0) glDeleteProgram(m_previewProg);
+    if (m_dummyVAO    != 0) glDeleteVertexArrays(1, &m_dummyVAO);
 
     SDL_GL_DestroyContext(m_glCtx);
     SDL_DestroyWindow(m_window);

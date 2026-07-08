@@ -18,7 +18,7 @@ Creation date: 14/06/2026
 
 �	P: Toggle to pause/start the light animation. 
 �	N: Toggle normal rendering
-�	T: Cycle render mode (normal mapping, normal, tangent, bitangent)
+�	T: Toggle shadow mapping on/off
 �	F: Toggle face/averaged normal
 �	M: Toggle wireframe mode on/off
 

@@ -62,6 +62,10 @@ class CS300Parser
         float      innerAngleCos = 1.0f;
         float      outerAngleCos = 0.8660254f;
 
+        // Shadow mapping parameters.
+        float      bias          = 0.001f;
+        int        pcf           = 0;
+
         std::vector<Animations::Anim> anims;
     };
     std::vector<Light> lights;
