@@ -5,7 +5,7 @@ width 1280.0
 height 720.0
 near 1
 far 500
-camPosition 0 0 110
+camPosition 40 20 0
 camTarget 0 0 50
 camUp 0 1 0
     
@@ -58,20 +58,52 @@ shininess 20
 mesh PLANE
 normalMap data/textures/brick_normal_map.png
 
-object sphere
+object sphere1
 translate 0 0 50
 rotation 0 0 0
-scale 30 30 30
-shininess 3
+scale 20 20 20
 mesh SPHERE
-normalMap data/textures/circles_normal_map.png
+
+object sphere2
+translate 0 -30 50
+rotation 0 0 0
+scale 10 10 10
+mesh SPHERE
+
+object cone1
+translate 30 -30 50
+rotation 0 0 0
+scale 30 30 30
+mesh CONE
+
+object cylinder
+translate -30 -35 50
+rotation 0 0 0
+scale 5 30 5
+mesh CYLINDER
+
+object cube1
+translate 30 -45 80
+rotation 0 0 0
+scale 10 10 10
+mesh CUBE
+
+object cube2
+translate -30 -45 80
+rotation 0 0 0
+scale 10 10 10
+mesh CUBE
 
 #light data
 light
-translate -40 0 50
+translate -40 20 10
 color 1 1 1
-lightType POINT	
-attenuation 0 0.0 0.0005
-orbit 0 0 50
-sinusoidal 0 1.5 40
-ambient 0.2
+lightType SPOT	
+attenuation 0 0.0 0.0	
+direction 0.577 -0.577 0.577
+spotAttenuation 10 40 1
+sinusoidal 0 0.5 30
+ambient 0.1
+bias 0.00001
+pcf 3
+
