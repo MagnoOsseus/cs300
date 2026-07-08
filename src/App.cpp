@@ -435,7 +435,7 @@ uniform sampler2D uPreviewTex;
 out vec4 fragColor;
 void main()
 {
-    const float previewContrastBoost = 20.0;
+    const float previewContrastBoost = 200.0;
     float depth = texture(uPreviewTex, vUV).r;
     float contrastDepth = clamp((1.0 - depth) * previewContrastBoost, 0.0, 1.0);
     float preview = 1.0 - contrastDepth;
