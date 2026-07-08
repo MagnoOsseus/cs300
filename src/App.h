@@ -146,6 +146,7 @@ private:
     // Render toggles and state.
     bool  m_showNormals    = false;
     bool  m_faceNormals    = false;
+    bool  m_pauseAnimation = false;
     bool  m_wireframe      = false;
     bool  m_shadowsEnabled = true;
     int   m_renderMode     = 0;

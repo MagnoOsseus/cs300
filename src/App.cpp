@@ -789,6 +789,11 @@ void App::HandleEvents(bool& quit)
                 std::cout << "Normals: " << (m_showNormals ? "ON" : "OFF") << '\n';
                 break;
 
+            case SDL_SCANCODE_P:
+                m_pauseAnimation = !m_pauseAnimation;
+                std::cout << "Animation: " << (m_pauseAnimation ? "PAUSED" : "RUNNING") << '\n';
+                break;
+
             case SDL_SCANCODE_F:
                 m_faceNormals = !m_faceNormals;
                 for (auto & o : m_objects)
@@ -804,8 +809,8 @@ void App::HandleEvents(bool& quit)
                 break;
 
             case SDL_SCANCODE_T:
-                m_shadowsEnabled = !m_shadowsEnabled;
-                std::cout << "Shadows: " << (m_shadowsEnabled ? "ON" : "OFF") << '\n';
+                m_renderMode = (m_renderMode + 1) % kRenderModeCount;
+                std::cout << "Render mode: " << RenderModeName(m_renderMode) << '\n';
                 break;
 
             case SDL_SCANCODE_EQUALS:
@@ -952,7 +957,7 @@ void App::RenderFrame()
     }
     glUniform1i(m_uShadowsEnabled, m_shadowsEnabled ? 1 : 0);
 
-    // Upload light[0] uniforms (normal mapping disabled, multiple lights disabled).
+    // Upload light[0] uniforms (multiple lights disabled).
     for (int i = 0; i < activeLightCount; ++i)
     {
         const auto& light = m_scene.lights[static_cast<size_t>(i)];
@@ -984,14 +989,14 @@ void App::RenderFrame()
     glBindTexture(GL_TEXTURE_2D, m_defaultNormalTex);
     glUniform1i(m_uNormalTex, 1);
 
-    // Draw objects (normal mapping disabled for A3).
+    // Draw objects.
     for (const auto& obj : m_objects)
     {
         if (!obj.mesh.IsValid()) continue;
 
         glm::mat4 M = obj.ModelMatrix();
         glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(M));
-        glUniform1i(m_uUseNormalMap, 0); // Normal mapping disabled for A3.
+        glUniform1i(m_uUseNormalMap, obj.material.hasNormalMap ? 1 : 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTexture);
         glActiveTexture(GL_TEXTURE1);
@@ -1074,7 +1079,10 @@ void App::Run()
         const Uint64 nowTick = SDL_GetTicks();
         const float  dt      = static_cast<float>(nowTick - prevTick) * 0.001f;
         prevTick = nowTick;
-        m_elapsedTime += dt;
+        if (!m_pauseAnimation)
+        {
+            m_elapsedTime += dt;
+        }
 
         HandleEvents(quit);
         m_camera.ProcessInput(SDL_GetKeyboardState(nullptr), dt);

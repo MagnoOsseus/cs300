@@ -30,7 +30,6 @@ in vec2 vUV;
 in vec3 vWorldPos; // World-space position for shadow test.
 
 uniform sampler2D uDiffuseTexture;
-// Normal mapping disabled for A3 (kept for code preservation).
 uniform bool uUseNormalMap;
 uniform sampler2D uNormalTexture;
 uniform int uRenderMode;
@@ -45,7 +44,7 @@ uniform sampler2D uShadowMap;    // Depth texture from light pass.
 uniform mat4 uLightVP;           // LP * LV combined matrix.
 uniform float uShadowBias;       // Bias read from scene (avoids acne).
 uniform int uPcfRadius;          // PCF kernel half-size from scene.
-uniform bool uShadowsEnabled;    // Toggled with T key.
+uniform bool uShadowsEnabled;    // Shadow shading enable flag.
 
 out vec4 fragColor;
 
@@ -175,7 +174,6 @@ void main()
     vec3 B = normalize(vViewBitangent);
     mat3 TBN = mat3(T, B, NBase);
     vec3 mapNormal = texture(uNormalTexture, vUV).rgb * 2.0 - 1.0;
-    // Normal mapping disabled for A3; uUseNormalMap is always false.
     vec3 N = uUseNormalMap ? normalize(TBN * mapNormal) : NBase;
     vec3 V = normalize(-vViewPos);
     vec3 finalColor = vec3(0.0);
@@ -237,4 +235,3 @@ void main()
 
     fragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
 }
-
