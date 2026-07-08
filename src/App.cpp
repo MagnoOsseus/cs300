@@ -26,7 +26,7 @@ static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 
 static const float kMinLightDirectionLength = 1e-6f;
-static const float kAmbientBoost            = 0.25f;
+static const float kAmbientBoost            = 0.45f;
 static const float kLightMarkerScale        = 1.2f;
 static const int kRenderModeNormalMapping   = 0;
 static const int kRenderModeNormal          = 1;
@@ -435,7 +435,7 @@ uniform sampler2D uPreviewTex;
 out vec4 fragColor;
 void main()
 {
-    const float previewContrastBoost = 12.0;
+    const float previewContrastBoost = 20.0;
     float depth = texture(uPreviewTex, vUV).r;
     float contrastDepth = clamp((1.0 - depth) * previewContrastBoost, 0.0, 1.0);
     float preview = 1.0 - contrastDepth;
