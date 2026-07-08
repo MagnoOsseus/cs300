@@ -35,4 +35,3 @@ void main()
 
     gl_Position = uProj * viewPos;
 }
-

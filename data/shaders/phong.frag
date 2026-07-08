@@ -35,7 +35,6 @@ uniform sampler2D uNormalTexture;
 uniform int uRenderMode;
 uniform float uShininess;
 uniform float uAmbientBoost;
-// Only light[0] is used for A3; multiple-light loop kept but capped at 1.
 uniform int uLightNum;
 uniform Light uLight[LIGHT_NUM_MAX];
 
@@ -175,7 +174,7 @@ void main()
     mat3 TBN = mat3(T, B, NBase);
     vec3 mapNormal = texture(uNormalTexture, vUV).rgb * 2.0 - 1.0;
     vec3 N = uUseNormalMap ? normalize(TBN * mapNormal) : NBase;
-    vec3 V = normalize(-vViewPos);
+    vec3 viewDir = normalize(-vViewPos);
     vec3 finalColor = vec3(0.0);
 
     // Compute shadow factor once for light[0] (A3 uses only one light).
@@ -204,19 +203,19 @@ void main()
             }
         }
 
-        float NdotL = max(dot(N, L), 0.0);
-        // Ambient coefficient is 1 per assignment; ambient unaffected by shadow.
+        float nDotL = max(dot(N, L), 0.0);
+        // Ambient term is boosted from scene ambient and kept independent from shadow.
         float ambientStrength = max(light.ambient, 0.0) + uAmbientBoost;
         vec3 ambientTerm = ambientStrength * baseColor * light.color;
 
         // Diffuse term.
-        vec3 diffuseTerm = light.color * baseColor * NdotL;
+        vec3 diffuseTerm = light.color * baseColor * nDotL;
 
         vec3 specularTerm = vec3(0.0);
-        if (NdotL > 0.0)
+        if (nDotL > 0.0)
         {
             vec3 R = normalize(2.0 * dot(N, L) * N - L);
-            float spec = pow(max(dot(R, V), 0.0), max(uShininess, 1.0));
+            float spec = pow(max(dot(R, viewDir), 0.0), max(uShininess, 1.0));
             // Specular color is white per assignment (specular = vec3(1.0)).
             specularTerm = light.color * vec3(1.0) * spec;
         }

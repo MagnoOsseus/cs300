@@ -427,7 +427,7 @@ void main()
 }
 )glsl";
 
-    // Display raw depth values from the shadow map (values near 1.0 = far from light).
+    // Display depth with boosted contrast so the shadow shape is visible.
     static const char * kPreviewFrag = R"glsl(
 #version 430 core
 in vec2 vUV;
@@ -436,7 +436,8 @@ out vec4 fragColor;
 void main()
 {
     float depth = texture(uPreviewTex, vUV).r;
-    fragColor = vec4(vec3(depth), 1.0);
+    float preview = clamp((1.0 - depth) * 12.0, 0.0, 1.0);
+    fragColor = vec4(vec3(preview), 1.0);
 }
 )glsl";
 
@@ -809,8 +810,8 @@ void App::HandleEvents(bool& quit)
                 break;
 
             case SDL_SCANCODE_T:
-                m_renderMode = (m_renderMode + 1) % kRenderModeCount;
-                std::cout << "Render mode: " << RenderModeName(m_renderMode) << '\n';
+                m_shadowsEnabled = !m_shadowsEnabled;
+                std::cout << "Shadows: " << (m_shadowsEnabled ? "ON" : "OFF") << '\n';
                 break;
 
             case SDL_SCANCODE_EQUALS:
@@ -840,6 +841,8 @@ void App::RenderDepthPass(const glm::mat4& LV, const glm::mat4& LP)
     glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFBO);
     glViewport(0, 0, kShadowMapSize, kShadowMapSize);
     glClear(GL_DEPTH_BUFFER_BIT);
+    // Cull front faces in depth pass to reduce shadow acne.
+    glCullFace(GL_FRONT);
 
     glUseProgram(m_depthProg);
 
@@ -853,6 +856,7 @@ void App::RenderDepthPass(const glm::mat4& LV, const glm::mat4& LP)
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glCullFace(GL_BACK);
 }
 
 // Draw the shadow depth texture in a small preview in the bottom-left corner.
@@ -930,6 +934,7 @@ void App::RenderFrame()
     }
 
     // ---- Second pass: render from the camera ----
+    glCullFace(GL_BACK);
     glViewport(0, 0, WIN_W, WIN_H);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -996,7 +1001,8 @@ void App::RenderFrame()
 
         glm::mat4 M = obj.ModelMatrix();
         glUniformMatrix4fv(m_uModel, 1, GL_FALSE, glm::value_ptr(M));
-        glUniform1i(m_uUseNormalMap, obj.material.hasNormalMap ? 1 : 0);
+        // Normal mapping system is preserved but bypassed for A3 output.
+        glUniform1i(m_uUseNormalMap, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, obj.material.diffuseTexture);
         glActiveTexture(GL_TEXTURE1);
