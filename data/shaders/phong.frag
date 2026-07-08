@@ -226,9 +226,10 @@ void main()
 
         float lightScale = (light.type == LIGHT_TYPE_SPOT) ? spotFactor : 1.0;
 
-        // Shadow only modulates diffuse and specular; ambient is always present.
-        vec3 contribution = attenuation * lightScale *
-            (ambientTerm + shadowFactor * (diffuseTerm + specularTerm));
+        // Ambient is global: not multiplied by attenuation, spot factor, or shadow.
+        // Diffuse and specular are modulated by all three.
+        vec3 contribution = ambientTerm +
+            attenuation * lightScale * shadowFactor * (diffuseTerm + specularTerm);
         finalColor += contribution;
     }
 

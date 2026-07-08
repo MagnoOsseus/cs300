@@ -26,7 +26,7 @@ static const GLsizei WIN_W = 1280;
 static const GLsizei WIN_H = 720;
 
 static const float kMinLightDirectionLength = 1e-6f;
-static const float kAmbientBoost            = 0.45f;
+static const float kAmbientBoost            = 0.05f;
 static const float kLightMarkerScale        = 1.2f;
 static const int kRenderModeNormalMapping   = 0;
 static const int kRenderModeNormal          = 1;
